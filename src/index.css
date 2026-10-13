@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  /* Nocturne Dark (Default) */
+  --obs-bg-base: #0b0f19;
+  --obs-bg-surface: #111827;
+  --obs-bg-surface-elevated: #1e293b;
+  --obs-border-subtle: #1f293d;
+  --obs-border-active: #334155;
+  --obs-text-primary: #f8fafc;
+  --obs-text-secondary: #94a3b8;
+  --obs-text-muted: #64748b;
+
+  --risk-low: #10b981;
+  --risk-moderate: #f59e0b;
+  --risk-high: #ef4444;
+
+  --circadian-sleep: #3b82f6;
+  --circadian-deep: #1d4ed8;
+  --circadian-rem: #60a5fa;
+  --circadian-hrv: #06b6d4;
+  --circadian-bp: #8b5cf6;
+  --circadian-med: #ec4899;
+  --circadian-activity: #14b8a6;
+}
+
+.light {
+  /* Clinical Companion Light */
+  --obs-bg-base: #f8fafc;
+  --obs-bg-surface: #ffffff;
+  --obs-bg-surface-elevated: #f1f5f9;
+  --obs-border-subtle: #e2e8f0;
+  --obs-border-active: #cbd5e1;
+  --obs-text-primary: #0f172a;
+  --obs-text-secondary: #475569;
+  --obs-text-muted: #94a3b8;
+
+  --risk-low: #059669;
+  --risk-moderate: #d97706;
+  --risk-high: #dc2626;
+
+  --circadian-sleep: #2563eb;
+  --circadian-deep: #1e40af;
+  --circadian-rem: #3b82f6;
+  --circadian-hrv: #0891b2;
+  --circadian-bp: #7c3aed;
+  --circadian-med: #db2777;
+  --circadian-activity: #0d9488;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--obs-bg-base);
+  color: var(--obs-text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'tnum' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numerals for medical readings */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.reduced-motion *, .reduced-motion ::before, .reduced-motion ::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--obs-border-active);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--obs-text-muted);
+}

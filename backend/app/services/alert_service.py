@@ -1,0 +1,175 @@
+"""Alert generation, deduplication, and clinician action service."""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import select, desc
+
+from backend.app.config import settings
+from backend.app.models import Alert, ClinicianNote, Prediction
+
+logger = logging.getLogger("nightwatch.alerts")
+
+
+class AlertService:
+    """Manages clinical alerts with deduplication cooldown and review actions."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def evaluate_and_create_alert(
+        self,
+        patient_id: str,
+        prediction: Prediction,
+    ) -> Optional[Alert]:
+        """Trigger an alert if probability >= high threshold and not in cooldown."""
+        if prediction.probability < settings.risk_threshold_high:
+            return None
+
+        # Check for open alert within cooldown window
+        cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.alert_cooldown_hours)
+        recent_alert = self.db.execute(
+            select(Alert).where(
+                Alert.patient_id == patient_id,
+                Alert.created_at >= cooldown_cutoff,
+                Alert.status == "open",
+            )
+        ).scalars().first()
+
+        if recent_alert:
+            logger.info(f"Suppressed duplicate alert for patient {patient_id} within {settings.alert_cooldown_hours}h cooldown.")
+            return None
+
+        # Generate clinician-oriented alert message
+        top_driver = ""
+        if prediction.top_factors and len(prediction.top_factors) > 0:
+            first_factor = prediction.top_factors[0]
+            top_driver = f" Primary driver: {first_factor.get('display_name', 'Hemodynamic volatility')} ({first_factor.get('reason', '')})"
+
+        message = (
+            f"HIGH RISK ALERT: Predicted 24-hour hypertensive episode probability is {prediction.probability:.1%}."
+            f"{top_driver} Clinician review and home blood pressure recheck recommended."
+        )
+
+        alert = Alert(
+            patient_id=patient_id,
+            prediction_id=prediction.prediction_id,
+            risk_level="High",
+            probability=prediction.probability,
+            message=message,
+            created_at=datetime.now(timezone.utc),
+            status="open",
+        )
+        self.db.add(alert)
+        self.db.commit()
+        self.db.refresh(alert)
+        logger.warning(f"New High Risk Alert generated: {alert.alert_id} for patient {patient_id}")
+        return alert
+
+    def get_patient_alerts(self, patient_id: str, limit: int = 50) -> List[Alert]:
+        """Fetch alert feed for patient."""
+        return list(self.db.execute(
+            select(Alert)
+            .where(Alert.patient_id == patient_id)
+            .order_by(desc(Alert.created_at))
+            .limit(limit)
+        ).scalars().all())
+
+    def acknowledge_alert(
+        self,
+        alert_id: str,
+        clinician_name: str = "Dr. Clinician",
+        comment: Optional[str] = None,
+    ) -> Optional[Alert]:
+        """Mark an open alert as acknowledged."""
+        alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
+        if not alert:
+            return None
+
+        alert.status = "acknowledged"
+        alert.acknowledged_by = clinician_name
+        alert.acknowledged_at = datetime.now(timezone.utc)
+
+        if comment:
+            note = ClinicianNote(
+                patient_id=alert.patient_id,
+                alert_id=alert.alert_id,
+                note=f"[Alert Acknowledged by {clinician_name}] {comment}",
+                created_at=datetime.now(timezone.utc),
+            )
+            self.db.add(note)
+
+        self.db.commit()
+        self.db.refresh(alert)
+        return alert
+
+    def snooze_alert(
+        self,
+        alert_id: str,
+        clinician_name: str = "Dr. Clinician",
+        snooze_hours: float = 4.0,
+        reason: str = "Awaiting post-prandial repeat cuff measurement",
+    ) -> Optional[Alert]:
+        """Snooze alert with specific duration and documented rationale."""
+        alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
+        if not alert:
+            return None
+
+        alert.status = "snoozed"
+        alert.acknowledged_by = clinician_name
+        alert.acknowledged_at = datetime.now(timezone.utc)
+
+        note = ClinicianNote(
+            patient_id=alert.patient_id,
+            alert_id=alert.alert_id,
+            note=f"[Alert Snoozed for {snooze_hours:.1f}h by {clinician_name}] Reason: {reason}",
+            created_at=datetime.now(timezone.utc),
+        )
+        self.db.add(note)
+
+        self.db.commit()
+        self.db.refresh(alert)
+        return alert
+
+    def mark_false_positive(
+        self,
+        alert_id: str,
+        clinician_name: str = "Dr. Clinician",
+        reason: str = "Situational anomaly",
+    ) -> Optional[Alert]:
+        """Mark alert as false positive for model audit."""
+        alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
+        if not alert:
+            return None
+
+        alert.status = "false_positive"
+        alert.acknowledged_by = clinician_name
+        alert.acknowledged_at = datetime.now(timezone.utc)
+
+        note = ClinicianNote(
+            patient_id=alert.patient_id,
+            alert_id=alert.alert_id,
+            note=f"[Marked False Positive by {clinician_name}] Reason: {reason}",
+            created_at=datetime.now(timezone.utc),
+        )
+        self.db.add(note)
+
+        self.db.commit()
+        self.db.refresh(alert)
+        return alert
+
+    def add_clinician_note(self, patient_id: str, note_text: str, alert_id: Optional[str] = None) -> ClinicianNote:
+        """Add clinical documentation note."""
+        note = ClinicianNote(
+            patient_id=patient_id,
+            alert_id=alert_id,
+            note=note_text,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.db.add(note)
+        self.db.commit()
+        self.db.refresh(note)
+        return note
