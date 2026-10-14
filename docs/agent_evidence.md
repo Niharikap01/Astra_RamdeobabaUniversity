@@ -343,3 +343,145 @@ git diff --stat
 - Long-duration multi-day background simulation process running indefinitely (verified discrete multi-tick ingestion pipeline triggering alerts).
 - Headless browser verification of snooze modal UI (deferred to Phase 7).
 
+
+---
+
+## Phase 2: Honest Data Layer (M3)
+
+### 1. Summary of Changes
+- **No Silent Imputations**: Removed hardcoded magic values (`125.0`, `80.0`, `7.0`, `35.0`, `68.0`, evening = morning - 2) across `backend/app/services/fusion_service.py` and `ml/feature_engineering.py`. Missing sensor readings now strictly preserve `np.nan`.
+- **Honest Data Coverage & Refusal**: Implemented `compute_data_coverage` in `fusion_service.py`. When data coverage falls below `MIN_COVERAGE_THRESHOLD` (configurable in `config.py`, default `0.50`), `generate_and_save_prediction` and `/api/patients/{patient_id}/risk` refuse prediction with clear clinical reasons (HTTP 422 / ValueError).
+- **Coverage-Aware Confidence & CI Scaling**: In `prediction_service.py`, implemented `compute_confidence(prob, coverage_pct)` returning a confidence score (0-1) and confidence interval bounds `[lower, upper]`. Confidence intervals widen proportionally as coverage decreases.
+- **30-Day Personal Baseline Estimation**: Implemented `compute_patient_30d_baseline` in `ehr_service.py`, estimating individual physiological reference baselines from stored `SensorReading` events during the patient's first 30 days. Removed any reference to archetype simulator ground-truth parameters.
+- **Sleep Fingerprint 6 Clinical Axes**: Rewrote `fingerprint_service.py` to evaluate the six clinical axes: Nocturnal BP Stability, Autonomic Resilience, Sleep Continuity, Morning Surge Control, Medication Coverage, and Recovery Capacity against each patient's personal 30-day baseline deviations.
+- **Real Risk Horizon**: Updated `build_risk_horizon` in `twin_service.py` to return timestamps localized in `Asia/Kolkata` (+05:30), markers strictly from real stored BP cuff readings and medication logs, and setting `nocturnal_dipping_pct = None` to honestly reflect that home BP cuffs cannot measure nocturnal dipping without ABPM.
+- **Why Risk Changed**: Feature snapshot diffing between consecutive predictions. When only 1 prediction exists, cleanly returns "No previous prediction exists." with `previous_risk_pct = None` and `risk_delta_pct = None`.
+- **Frontend Safe Rendering**: In `dashboard/src/components/RiskHorizonChart.tsx`, rendered `nocturnal_dipping_pct` safely, displaying `"N/A (Requires ABPM)"` when `null`.
+
+### 2. Pytest Execution & Coverage
+**Command:**
+```powershell
+.\.venv_check\Scripts\pytest.exe -v --cov=backend/app --cov-report=term-missing
+```
+**Raw Output:**
+```
+============================= test session starts =============================
+platform win32 -- Python 3.11.0, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\HP\Downloads\nightwatch (1)
+plugins: anyio-4.15.1, asyncio-1.4.0, cov-7.1.0
+collected 30 items
+
+backend/tests/test_alerts.py::test_alert_generation_at_threshold PASSED  [  3%]
+backend/tests/test_alerts.py::test_alert_cooldown_open_acknowledged_snoozed PASSED [  6%]
+backend/tests/test_alerts.py::test_snooze_duration_stored_and_expires PASSED [ 10%]
+backend/tests/test_alerts.py::test_alerts_fire_in_simulation_run PASSED  [ 13%]
+backend/tests/test_alerts.py::test_thresholds_endpoint PASSED            [ 16%]
+backend/tests/test_api.py::test_health_check PASSED                      [ 20%]
+backend/tests/test_api.py::test_health_check_db_failure PASSED           [ 23%]
+backend/tests/test_api.py::test_health_check_model_not_loaded PASSED     [ 26%]
+backend/tests/test_api.py::test_config_app_port_env PASSED               [ 30%]
+backend/tests/test_api.py::test_patients_endpoints PASSED                [ 33%]
+backend/tests/test_api.py::test_digital_twin_endpoints PASSED            [ 36%]
+backend/tests/test_api.py::test_risk_and_history_endpoints PASSED        [ 40%]
+backend/tests/test_api.py::test_whatif_endpoint PASSED                   [ 43%]
+backend/tests/test_api.py::test_sensor_ingestion_and_pipeline_trigger PASSED [ 46%]
+backend/tests/test_api.py::test_risk_horizon_and_why_risk_changed PASSED [ 50%]
+backend/tests/test_api.py::test_alert_lifecycle_and_notes PASSED         [ 53%]
+backend/tests/test_api.py::test_simulation_endpoints PASSED              [ 56%]
+backend/tests/test_api.py::test_websocket_stream PASSED                  [ 60%]
+backend/tests/test_fusion.py::test_zero_future_leakage_proof PASSED      [ 63%]
+backend/tests/test_fusion.py::test_fusion_service_integration PASSED     [ 66%]
+backend/tests/test_honest_data_layer.py::test_fusion_no_silent_imputation PASSED [ 70%]
+backend/tests/test_honest_data_layer.py::test_coverage_computation_and_prediction_refusal PASSED [ 73%]
+backend/tests/test_honest_data_layer.py::test_confidence_and_ci_widening PASSED [ 76%]
+backend/tests/test_honest_data_layer.py::test_patient_30d_baseline_estimation PASSED [ 80%]
+backend/tests/test_honest_data_layer.py::test_risk_horizon_honest_markers_and_timezone PASSED [ 83%]
+backend/tests/test_honest_data_layer.py::test_sleep_fingerprint_six_clinical_axes PASSED [ 86%]
+backend/tests/test_honest_data_layer.py::test_why_risk_changed_single_and_multiple_predictions PASSED [ 90%]
+backend/tests/test_prediction.py::test_prediction_scoring PASSED         [ 93%]
+backend/tests/test_twin.py::test_twin_construction PASSED                [ 96%]
+backend/tests/test_whatif.py::test_whatif_counterfactual_simulation PASSED [100%]
+
+=============================== tests coverage ================================
+Name                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------
+backend\app\__init__.py                            1      0   100%
+backend\app\config.py                             68      3    96%   89, 113-114
+backend\app\database.py                           22      4    82%   32-36
+backend\app\main.py                               70      5    93%   118, 127-130
+backend\app\models.py                             88      0   100%
+backend\app\routers\patients.py                   50      3    94%   68, 107, 124
+backend\app\routers\predictions.py                73      5    93%   44, 67, 167, 186, 204
+backend\app\routers\sensors.py                    30      8    73%   26-31, 51, 63-64
+backend\app\routers\simulation.py                 54     26    52%   32-47, 56-67, 106-118
+backend\app\routers\twin.py                       41      4    90%   29, 39, 54, 64
+backend\app\routers\whatif.py                     20      1    95%   29
+backend\app\schemas.py                           230      0   100%
+backend\app\services\alert_service.py             98      3    97%   119, 148, 183
+backend\app\services\ehr_service.py               84      2    98%   131-132
+backend\app\services\fingerprint_service.py       52      2    96%   137, 196
+backend\app\services\fusion_service.py            83      2    98%   45, 131
+backend\app\services\prediction_service.py       104      8    92%   51-59, 74-76
+backend\app\services\sensor_service.py            41     11    73%   29, 42-47, 63-72
+backend\app\services\twin_service.py             207     18    91%   52, 154, 184, 321, 324, 330, 359, 410, 431-434, 458, 460, 464-468
+backend\app\services\whatif_service.py            61      4    93%   94-95, 102-103
+backend\app\services\ws_manager.py                34      9    74%   40-49
+backend\app\simulation\__init__.py                 4      0   100%
+backend\app\simulation\ehr_simulator.py          178     49    72%   79, 128-134, 147, 149, 155, 161, 163, 203-207, 209-213, 220-237, 296, 298, 302, 304, 306, 308, 321, 327, 329
+backend\app\simulation\scenario_runner.py        125     89    29%   61-81, 89-95, 105-158, 188-202, 208-217, 225-252
+backend\app\simulation\wearable_simulator.py     186     28    85%   105, 204-224, 257, 259, 263, 277, 279, 281, 285
+----------------------------------------------------------------------------
+TOTAL                                           2004    284    86%
+====================== 30 passed, 19 warnings in 10.00s =======================
+```
+
+### 3. Frontend Build & Typecheck
+**Command:**
+```powershell
+cd dashboard; npm run build; npx tsc --noEmit
+```
+**Raw Output:**
+```
+> react-example@0.0.0 build
+> vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 16 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.25 kB │ gzip:  0.58 kB
+dist/assets/index-CaHEg_y7.css   40.66 kB │ gzip:  7.82 kB
+dist/assets/index-BPfduECR.js   219.49 kB │ gzip: 68.57 kB
+✓ built in 282ms
+```
+TypeScript typecheck (`npx tsc --noEmit`) completed with exit code 0 and 0 errors.
+
+### 4. Git Diff Stat
+**Command:**
+```powershell
+git diff --stat
+```
+**Raw Output:**
+```
+ .env.example                                  |   1 +
+ backend/app/config.py                         |   3 +
+ backend/app/routers/predictions.py            |  34 ++++
+ backend/app/schemas.py                        |  51 +++--
+ backend/app/services/ehr_service.py           |  93 +++++++--
+ backend/app/services/fingerprint_service.py   | 206 +++++++++++--------
+ backend/app/services/fusion_service.py        |  98 ++++++---
+ backend/app/services/prediction_service.py    |  52 ++++-
+ backend/app/services/twin_service.py          | 280 +++++++++++++++++---------
+ dashboard/src/components/RiskHorizonChart.tsx |   2 +-
+ dashboard/src/types/index.ts                  |  46 +++--
+ ml/explain.py                                 |   8 +-
+ ml/feature_engineering.py                     | 188 +++++++++++------
+ 13 files changed, 743 insertions(+), 319 deletions(-)
+```
+
+### 5. NOT RUN / NOT VERIFIED (Phase 2)
+- Ambulatory 24h blood pressure monitoring (ABPM) hardware integration — nightwatch deliberately marks nocturnal dipping as N/A (Requires ABPM) per clinical guidelines.
+- Live streaming WebSocket verification with low-coverage patient simulated ticks (deferred to Phase 7).
+
+

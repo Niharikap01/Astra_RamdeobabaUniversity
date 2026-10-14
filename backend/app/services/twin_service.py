@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from backend.app.config import settings
 from backend.app.models import Patient, Prediction
@@ -59,27 +60,42 @@ class TwinService:
             latest_pred = self.pred_service.generate_and_save_prediction(patient_id, features_dict)
             self.alert_service.evaluate_and_create_alert(patient_id, latest_pred)
 
-        # Construct sub-schemas
+        # Construct sub-schemas without silent imputation
+        import math
+        def _safe_round(val: Any, digits: int = 1) -> Optional[float]:
+            if val is None or (isinstance(val, float) and math.isnan(val)):
+                return None
+            return round(float(val), digits)
+
+        b_hrv_30d = _safe_round(static_dict.get("baseline_hrv_rmssd"), 1)
+        b_sleep_30d = _safe_round(static_dict.get("baseline_sleep_hours"), 1)
+
         static_profile = StaticProfile(
             age=patient.age,
             sex=patient.sex,
             bmi=round(patient.bmi, 1),
             diagnoses=static_dict.get("diagnoses", []),
             medications=static_dict.get("medications", []),
-            baseline_hrv_30d=round(static_dict.get("baseline_hrv_rmssd", 35.0), 1),
-            baseline_sleep_30d=round(static_dict.get("baseline_sleep_hours", 7.0), 1),
+            baseline_hrv_30d=b_hrv_30d,
+            baseline_sleep_30d=b_sleep_30d,
         )
 
+        steps_val = features_dict.get("steps_yesterday")
+        steps_int = int(steps_val) if (steps_val is not None and not math.isnan(steps_val)) else None
+
+        med_val = features_dict.get("medication_taken_last_night")
+        med_int = int(med_val) if (med_val is not None and not math.isnan(med_val)) else None
+
         dynamic_state = DynamicState(
-            latest_sbp=round(features_dict.get("sbp_latest", 125.0), 1),
-            latest_dbp=round(features_dict.get("dbp_latest", 80.0), 1),
-            sbp_7d_mean=round(features_dict.get("sbp_mean_7d", 125.0), 1),
-            sleep_last_night=round(features_dict.get("sleep_duration_last_night", 7.0), 2),
-            sleep_efficiency=round(features_dict.get("sleep_efficiency_last_night", 0.85), 3),
-            hrv_last_night=round(features_dict.get("hrv_rmssd_last_night", 35.0), 1),
-            resting_hr_last_night=round(features_dict.get("resting_hr_last_night", 68.0), 1),
-            steps_yesterday=int(features_dict.get("steps_yesterday", 6000)),
-            medication_taken_last_night=int(features_dict.get("medication_taken_last_night", 1)),
+            latest_sbp=_safe_round(features_dict.get("sbp_latest"), 1),
+            latest_dbp=_safe_round(features_dict.get("dbp_latest"), 1),
+            sbp_7d_mean=_safe_round(features_dict.get("sbp_mean_7d"), 1),
+            sleep_last_night=_safe_round(features_dict.get("sleep_duration_last_night"), 2),
+            sleep_efficiency=_safe_round(features_dict.get("sleep_efficiency_last_night"), 3),
+            hrv_last_night=_safe_round(features_dict.get("hrv_rmssd_last_night"), 1),
+            resting_hr_last_night=_safe_round(features_dict.get("resting_hr_last_night"), 1),
+            steps_yesterday=steps_int,
+            medication_taken_last_night=med_int,
         )
 
         # Top factors and plain-language reasons
@@ -157,7 +173,12 @@ class TwinService:
         return twin_state
 
     def build_risk_horizon(self, patient_id: str) -> Optional[RiskHorizonResponse]:
-        """Construct the 24-hour synchronized Risk Horizon trajectory."""
+        """Construct the 24-hour synchronized Risk Horizon trajectory using stored telemetry."""
+        from zoneinfo import ZoneInfo
+        import math
+        from backend.app.models import SensorReading
+
+        kolkata_tz = ZoneInfo("Asia/Kolkata")
         patient = self.ehr_service.get_patient(patient_id)
         if not patient:
             return None
@@ -167,68 +188,103 @@ class TwinService:
 
         latest_pred = self.pred_service.get_latest_prediction(patient_id)
         if not latest_pred:
-            latest_pred = self.pred_service.generate_and_save_prediction(patient_id, features_dict)
+            latest_pred = self.pred_service.generate_and_save_prediction(patient_id, features_dict, enforce_coverage=False)
 
         base_risk_pct = round(latest_pred.probability * 100.0, 1)
 
-        # Baseline diurnal parameters
-        b_sbp = features_dict.get("sbp_latest", 125.0)
-        b_dbp = features_dict.get("dbp_latest", 80.0)
-        morning_sbp = features_dict.get("morning_sbp_mean_7d", b_sbp + 4.0)
-        evening_sbp = features_dict.get("evening_sbp_mean_7d", b_sbp - 2.0)
-        surge_mag = round(morning_sbp - evening_sbp, 1)
-        dip_pct = round(max(2.0, min(18.0, ((morning_sbp - evening_sbp) / morning_sbp) * 100.0)), 1)
+        # 1. Compute honest data coverage from stored readings
+        overall_cov, per_source = self.fusion_service.compute_data_coverage(patient_id, days_lookback=1)
 
-        now = datetime.now(timezone.utc)
+        # 2. Query stored sensor readings and past predictions in the last 24h
+        now_utc = datetime.now(timezone.utc)
+        start_24h_utc = now_utc - timedelta(hours=12)
+
+        readings_24h = list(self.db.execute(
+            select(SensorReading)
+            .where(
+                SensorReading.patient_id == patient_id,
+                SensorReading.recorded_at >= start_24h_utc,
+                SensorReading.recorded_at <= now_utc,
+            )
+            .order_by(SensorReading.recorded_at.asc())
+        ).scalars().all())
+
+        past_preds = list(self.db.execute(
+            select(Prediction)
+            .where(
+                Prediction.patient_id == patient_id,
+                Prediction.generated_at >= start_24h_utc,
+                Prediction.generated_at <= now_utc,
+            )
+            .order_by(Prediction.generated_at.asc())
+        ).scalars().all())
+
         series_points: List[RiskHorizonPoint] = []
 
         for offset in range(-12, 13):
-            t_point = now + timedelta(hours=offset)
+            t_point_utc = now_utc + timedelta(hours=offset)
+            t_point_kolkata = t_point_utc.astimezone(kolkata_tz)
             is_pred = offset > 0
-            hour = t_point.hour
 
-            # Circadian modulation of risk: early morning (05:00 - 09:00) peak surge
-            circadian_mod = 0.0
-            if 5 <= hour <= 9:
-                circadian_mod = 12.0 if latest_pred.risk_level == "High" else 6.0
-            elif 23 <= hour or hour <= 4:
-                circadian_mod = -8.0  # Nocturnal dip
+            # Match readings within +/- 30 minutes of this hour
+            window_start = t_point_utc - timedelta(minutes=30)
+            window_end = t_point_utc + timedelta(minutes=30)
+            slot_readings = []
+            for r in readings_24h:
+                r_ts = r.recorded_at if r.recorded_at.tzinfo is not None else r.recorded_at.replace(tzinfo=timezone.utc)
+                if window_start <= r_ts <= window_end:
+                    slot_readings.append(r)
 
-            # Trajectory risk value
-            if not is_pred:
-                r_val = max(5.0, min(95.0, base_risk_pct - (offset * 0.4) + circadian_mod))
-                conf_width = 4.0
-            else:
-                # Predictive horizon expands confidence uncertainty
-                r_val = max(5.0, min(98.0, base_risk_pct + (offset * 0.8) + circadian_mod))
-                conf_width = min(22.0, 6.0 + (offset * 1.4))
+            # Measured BP
+            sbp_r = next((r.value for r in slot_readings if r.sensor_type == "home_sbp"), None)
+            dbp_r = next((r.value for r in slot_readings if r.sensor_type == "home_dbp"), None)
+            has_bp = sbp_r is not None
 
-            # Sleep window: 23:00 to 07:00
-            is_sleep = (23 <= hour or hour < 7)
+            # Medication event
+            med_r = next((r for r in slot_readings if r.sensor_type == "medication_taken"), None)
+            has_med = med_r is not None and med_r.value >= 1.0
+            med_name = (patient.archetype.replace("_", " ").title() + " Regimen") if has_med else None
+
+            # Sleep window detection from recorded sensor or hour
+            sleep_r = next((r for r in slot_readings if r.sensor_type in ("sleep_duration", "deep_sleep", "rem_sleep")), None)
+            hour_k = t_point_kolkata.hour
+            is_sleep = sleep_r is not None or (23 <= hour_k or hour_k < 7)
             sleep_st = None
             if is_sleep:
-                if 0 <= hour <= 2:
+                if 0 <= hour_k <= 2:
                     sleep_st = "deep"
-                elif 3 <= hour <= 5:
+                elif 3 <= hour_k <= 5:
                     sleep_st = "rem"
                 else:
                     sleep_st = "light"
 
-            # Events
-            has_bp = (hour == 8 or hour == 20)
-            m_sbp = round(b_sbp + (3.0 if hour == 8 else -2.0), 1) if (has_bp and not is_pred) else None
-            m_dbp = round(b_dbp + (2.0 if hour == 8 else -1.5), 1) if (has_bp and not is_pred) else None
-            p_sbp = round(b_sbp + (5.0 if hour == 8 else 0.0), 1) if (has_bp and is_pred) else None
+            # Risk trajectory
+            if not is_pred:
+                # Find closest stored prediction if any
+                closest_pred = None
+                min_diff = timedelta(hours=2)
+                for p in past_preds:
+                    p_ts = p.generated_at if p.generated_at.tzinfo is not None else p.generated_at.replace(tzinfo=timezone.utc)
+                    diff = abs(p_ts - t_point_utc)
+                    if diff < min_diff:
+                        min_diff = diff
+                        closest_pred = p
 
-            has_med = (hour == 21)
-            med_name = (patient.archetype.title() + " Regimen") if has_med else None
+                if closest_pred is not None:
+                    r_val = round(closest_pred.probability * 100.0, 1)
+                else:
+                    r_val = base_risk_pct
 
-            # Missing data simulation: rare brief gap 8h ago
-            is_missing = (offset == -8)
+                conf_width = 3.5
+                is_missing = len(slot_readings) == 0 and offset < 0
+            else:
+                r_val = base_risk_pct
+                conf_width = min(22.0, 5.0 + (offset * 1.2))
+                is_missing = False
 
             series_points.append(
                 RiskHorizonPoint(
-                    timestamp=t_point.isoformat(),
+                    timestamp=t_point_kolkata.isoformat(),
                     hour_offset=offset,
                     is_predicted=is_pred,
                     risk_pct=round(r_val, 1),
@@ -237,9 +293,9 @@ class TwinService:
                     is_sleep_window=is_sleep,
                     sleep_stage=sleep_st,
                     has_bp_reading=has_bp,
-                    measured_sbp=m_sbp,
-                    measured_dbp=m_dbp,
-                    predicted_sbp=p_sbp,
+                    measured_sbp=round(sbp_r, 1) if sbp_r is not None else None,
+                    measured_dbp=round(dbp_r, 1) if dbp_r is not None else None,
+                    predicted_sbp=None,
                     has_medication_event=has_med,
                     medication_name=med_name,
                     is_missing_data=is_missing,
@@ -250,86 +306,130 @@ class TwinService:
         pred_points = [p for p in series_points if p.is_predicted]
         peak_pt = max(pred_points, key=lambda x: x.risk_pct) if pred_points else series_points[-1]
         peak_window = PeakRiskWindow(
-            start=(datetime.fromisoformat(peak_pt.timestamp) - timedelta(hours=1)).isoformat(),
+            start=peak_pt.timestamp,
             end=(datetime.fromisoformat(peak_pt.timestamp) + timedelta(hours=2)).isoformat(),
             peak_risk_pct=peak_pt.risk_pct,
-            label="Peak Morning Vulnerability Window" if 5 <= datetime.fromisoformat(peak_pt.timestamp).hour <= 10 else "Anticipated Peak Risk",
+            label="Anticipated Vulnerability Window",
         )
 
-        # Context summary text
+        # Morning surge magnitude computed honestly from features or 0.0
+        m_sbp = features_dict.get("morning_sbp_mean_7d")
+        e_sbp = features_dict.get("evening_sbp_mean_7d")
+        if m_sbp is not None and e_sbp is not None and not (math.isnan(m_sbp) or math.isnan(e_sbp)):
+            surge_mag = round(float(m_sbp - e_sbp), 1)
+        else:
+            surge_mag = 0.0
+
         if latest_pred.risk_level == "High":
             summary = (
                 f"Elevated 24-hour hypertensive episode risk ({base_risk_pct:.0f}%). "
-                f"Peak vulnerability ({peak_pt.risk_pct:.0f}%) forecasted during morning surge hours. "
-                f"Associated with acute nocturnal sleep deficit and diminished vagal HRV buffering."
+                f"Peak vulnerability ({peak_pt.risk_pct:.0f}%) projected over the next 12-hour horizon. "
+                f"Associated with acute sleep deficit and diminished vagal HRV buffering."
             )
         elif latest_pred.risk_level == "Moderate":
             summary = (
                 f"Moderate 24-hour hypertensive risk ({base_risk_pct:.0f}%). "
-                f"Morning surge amplitude (+{surge_mag} mmHg) remains within manageable band, but sleep debt warrants monitoring."
+                f"Morning surge differential ({surge_mag:+.1f} mmHg) monitored against personal baseline."
             )
         else:
             summary = (
                 f"Low 24-hour hypertensive episode risk ({base_risk_pct:.0f}%). "
-                f"Preserved nocturnal blood pressure dipping ({dip_pct}%) and stable autonomic tone."
+                f"Stable autonomic tone and hemodynamic parameters observed."
             )
 
         return RiskHorizonResponse(
             patient_id=patient_id,
-            as_of=now.isoformat(),
-            data_coverage_pct=97.4,
-            per_source_coverage={"smart_ring": 98.5, "home_bp_cuff": 100.0, "smart_pillbox": 100.0},
+            as_of=now_utc.astimezone(kolkata_tz).isoformat(),
+            data_coverage_pct=overall_cov,
+            per_source_coverage=per_source,
             peak_risk_window=peak_window,
             series=series_points,
-            nocturnal_dipping_pct=dip_pct,
+            nocturnal_dipping_pct=None,
             morning_surge_magnitude=surge_mag,
             risk_summary_text=summary,
         )
 
     def get_why_risk_changed(self, patient_id: str) -> Optional[WhyRiskChangedResponse]:
-        """Produce clinician-oriented signed factor waterfall comparison."""
+        """Produce clinician-oriented signed factor comparison by diffing two stored feature snapshots."""
+        import math
+        from ml.explain import FEATURE_DISPLAY_NAMES
+
         patient = self.ehr_service.get_patient(patient_id)
         if not patient:
             return None
 
         preds = self.pred_service.get_prediction_history(patient_id, limit=2)
-        if not preds:
-            self.build_twin(patient_id)
-            preds = self.pred_service.get_prediction_history(patient_id, limit=2)
+        if not preds or len(preds) < 2:
+            curr_risk = round(preds[0].probability * 100.0, 1) if preds else 0.0
+            return WhyRiskChangedResponse(
+                patient_id=patient_id,
+                current_risk_pct=curr_risk,
+                previous_risk_pct=None,
+                risk_delta_pct=None,
+                summary="No previous prediction exists.",
+                factors=[],
+                trust_statement="Attributions represent differences between stored feature snapshots and do not establish biological causality.",
+            )
 
         curr_pred = preds[0]
-        prev_pred = preds[1] if len(preds) > 1 else None
+        prev_pred = preds[1]
 
         curr_risk = round(curr_pred.probability * 100.0, 1)
-        prev_risk = round((prev_pred.probability * 100.0) if prev_pred else (curr_risk - 6.5), 1)
+        prev_risk = round(prev_pred.probability * 100.0, 1)
         delta_risk = round(curr_risk - prev_risk, 1)
 
-        factors_list: List[FactorChangeItem] = []
-        for factor in (curr_pred.top_factors or []):
-            feat_name = factor.get("feature", "")
-            disp_name = factor.get("display_name", feat_name)
-            curr_val = float(factor.get("value", 0.0))
-            impact = float(factor.get("impact", 0.0))
+        curr_snapshot = curr_pred.feature_snapshot or {}
+        prev_snapshot = prev_pred.feature_snapshot or {}
 
-            direction = "increased_risk" if impact > 0 else "decreased_risk"
-            prev_val = curr_val * 0.9 if direction == "increased_risk" else curr_val * 1.1
+        factors_list: List[FactorChangeItem] = []
+        candidate_features = [k for k in curr_snapshot.keys() if not k.startswith("_")]
+        diffs = []
+
+        for feat in candidate_features:
+            c_val = curr_snapshot.get(feat)
+            p_val = prev_snapshot.get(feat)
+            if c_val is not None and p_val is not None and not (math.isnan(c_val) or math.isnan(p_val)):
+                change = float(c_val - p_val)
+                if abs(change) > 1e-4:
+                    diffs.append((feat, float(c_val), float(p_val), change))
+
+        diffs.sort(key=lambda x: abs(x[3]), reverse=True)
+
+        for feat, c_val, p_val, change in diffs[:6]:
+            disp_name = FEATURE_DISPLAY_NAMES.get(feat, feat.replace("_", " ").title())
+            higher_is_protective = feat in (
+                "sleep_duration_last_night",
+                "sleep_duration_mean_7d",
+                "hrv_rmssd_last_night",
+                "hrv_rmssd_mean_7d",
+                "sleep_efficiency_last_night",
+                "steps_mean_7d",
+                "adherence_rate_30d",
+            )
+            if higher_is_protective:
+                direction = "decreased_risk" if change > 0 else "increased_risk"
+            else:
+                direction = "increased_risk" if change > 0 else "decreased_risk"
+
+            impact_score = round(abs(change) * (2.0 if "sbp" in feat else 1.0), 1)
+            explanation = f"{disp_name} changed from {p_val:.1f} to {c_val:.1f} ({change:+.1f}), associated with {direction.replace('_', ' ')}."
 
             factors_list.append(
                 FactorChangeItem(
-                    feature=feat_name,
+                    feature=feat,
                     display_name=disp_name,
-                    current_value=round(curr_val, 2),
-                    previous_value=round(prev_val, 2),
-                    impact_delta=round(impact * 10.0, 1),
+                    current_value=round(c_val, 2),
+                    previous_value=round(p_val, 2),
+                    impact_delta=impact_score,
                     direction=direction,
-                    clinical_explanation=factor.get("reason", f"{disp_name} associated with hemodynamic risk modulation."),
+                    clinical_explanation=explanation,
                 )
             )
 
         if delta_risk > 0:
-            summary = f"Risk increased by {abs(delta_risk):.1f}% since previous evaluation, primarily driven by sleep disruption and morning surge volatility."
+            summary = f"Risk increased by {abs(delta_risk):.1f}% since previous evaluation, associated with changes in stored physiological features."
         elif delta_risk < 0:
-            summary = f"Risk decreased by {abs(delta_risk):.1f}% compared to prior telemetry, reflecting improved adherence and parasympathetic recovery."
+            summary = f"Risk decreased by {abs(delta_risk):.1f}% compared to prior evaluation, associated with favorable feature trajectory."
         else:
             summary = "Risk remains unchanged from prior baseline interval."
 
@@ -340,7 +440,7 @@ class TwinService:
             risk_delta_pct=delta_risk,
             summary=summary,
             factors=factors_list,
-            trust_statement="Attributions represent model feature contribution toward next-day episode probability and do not establish direct biological causality.",
+            trust_statement="Attributions represent differences between stored feature snapshots and do not establish biological causality.",
         )
 
     def _generate_recommended_actions(

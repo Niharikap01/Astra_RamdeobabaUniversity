@@ -429,7 +429,7 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
         <div className="text-[11px] text-slate-400 font-mono flex items-center gap-3">
           <span>Morning Surge: <strong className="text-slate-200">+{horizon.morning_surge_magnitude} mmHg</strong></span>
           <span>•</span>
-          <span>Nocturnal Dip: <strong className="text-slate-200">{horizon.nocturnal_dipping_pct}%</strong></span>
+          <span>Nocturnal Dip: <strong className="text-slate-200">{horizon.nocturnal_dipping_pct != null ? `${horizon.nocturnal_dipping_pct}%` : "N/A (Requires ABPM)"}</strong></span>
         </div>
       </div>
 

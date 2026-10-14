@@ -57,12 +57,18 @@ export interface RadarAxisValue {
 }
 
 export interface SleepFingerprintData {
-  sleep_duration_deviation_pct: number;
-  sleep_efficiency_deviation_pct: number;
-  hrv_deviation_pct: number;
-  resting_hr_deviation_pct: number;
-  bp_stability_deviation_pct: number;
-  nocturnal_dipping_deviation_pct: number;
+  nocturnal_bp_stability_pct: number;
+  autonomic_resilience_pct: number;
+  sleep_continuity_pct: number;
+  morning_surge_control_pct: number;
+  medication_coverage_pct: number;
+  recovery_capacity_pct: number;
+  sleep_duration_deviation_pct?: number;
+  sleep_efficiency_deviation_pct?: number;
+  hrv_deviation_pct?: number;
+  resting_hr_deviation_pct?: number;
+  bp_stability_deviation_pct?: number;
+  nocturnal_dipping_deviation_pct?: number;
   axes: RadarAxisValue[];
   status: "optimal" | "degraded" | "acute_deficit";
   summary: string;
@@ -74,20 +80,20 @@ export interface StaticProfile {
   bmi: number;
   diagnoses: string[];
   medications: string[];
-  baseline_hrv_30d: number;
-  baseline_sleep_30d: number;
+  baseline_hrv_30d?: number | null;
+  baseline_sleep_30d?: number | null;
 }
 
 export interface DynamicState {
-  latest_sbp: number;
-  latest_dbp: number;
-  sbp_7d_mean: number;
-  sleep_last_night: number;
-  sleep_efficiency: number;
-  hrv_last_night: number;
-  resting_hr_last_night: number;
-  steps_yesterday: number;
-  medication_taken_last_night: number;
+  latest_sbp?: number | null;
+  latest_dbp?: number | null;
+  sbp_7d_mean?: number | null;
+  sleep_last_night?: number | null;
+  sleep_efficiency?: number | null;
+  hrv_last_night?: number | null;
+  resting_hr_last_night?: number | null;
+  steps_yesterday?: number | null;
+  medication_taken_last_night?: number | null;
 }
 
 export interface DigitalTwinResponse {
@@ -134,7 +140,7 @@ export interface RiskHorizonResponse {
   per_source_coverage: Record<string, number>;
   peak_risk_window: PeakRiskWindow;
   series: RiskHorizonPoint[];
-  nocturnal_dipping_pct: number;
+  nocturnal_dipping_pct?: number | null;
   morning_surge_magnitude: number;
   risk_summary_text: string;
 }
@@ -152,8 +158,8 @@ export interface FactorChangeItem {
 export interface WhyRiskChangedResponse {
   patient_id: string;
   current_risk_pct: number;
-  previous_risk_pct: number;
-  risk_delta_pct: number;
+  previous_risk_pct?: number | null;
+  risk_delta_pct?: number | null;
   summary: string;
   factors: FactorChangeItem[];
   trust_statement: string;

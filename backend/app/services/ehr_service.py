@@ -31,6 +31,74 @@ class EHRService:
             .order_by(EHREvent.event_time.asc())
         ).scalars().all())
 
+    def compute_patient_30d_baseline(self, patient_id: str) -> Dict[str, float]:
+        """Estimate personal baseline metrics from the patient's first 30 days of stored readings.
+
+        Avoids simulator ground truth or archetype heuristics.
+        """
+        from datetime import timedelta
+        import numpy as np
+        from backend.app.models import SensorReading
+
+        readings = list(self.db.execute(
+            select(SensorReading)
+            .where(SensorReading.patient_id == patient_id)
+            .order_by(SensorReading.recorded_at.asc())
+        ).scalars().all())
+
+        if not readings:
+            return {
+                "baseline_sbp": float("nan"),
+                "baseline_dbp": float("nan"),
+                "baseline_sleep_hours": float("nan"),
+                "baseline_hrv_rmssd": float("nan"),
+                "baseline_resting_hr": float("nan"),
+                "baseline_sleep_efficiency": float("nan"),
+                "baseline_sbp_std": 3.5,
+                "baseline_morning_surge": 3.0,
+                "baseline_adherence": 1.0,
+            }
+
+        start_time = readings[0].recorded_at
+        cutoff_30d = start_time + timedelta(days=30)
+        first_30d_readings = [r for r in readings if r.recorded_at <= cutoff_30d]
+
+        sbp_vals = [r.value for r in first_30d_readings if r.sensor_type == "home_sbp"]
+        dbp_vals = [r.value for r in first_30d_readings if r.sensor_type == "home_dbp"]
+        sleep_vals = [r.value for r in first_30d_readings if r.sensor_type == "sleep_duration"]
+        hrv_vals = [r.value for r in first_30d_readings if r.sensor_type == "hrv_rmssd"]
+        rhr_vals = [r.value for r in first_30d_readings if r.sensor_type == "resting_hr"]
+        eff_vals = [r.value for r in first_30d_readings if r.sensor_type == "sleep_efficiency"]
+        med_vals = [r.value for r in first_30d_readings if r.sensor_type == "medication_taken"]
+
+        b_sbp = float(np.mean(sbp_vals)) if sbp_vals else float("nan")
+        b_dbp = float(np.mean(dbp_vals)) if dbp_vals else float("nan")
+        b_sleep = float(np.mean(sleep_vals)) if sleep_vals else float("nan")
+        b_hrv = float(np.mean(hrv_vals)) if hrv_vals else float("nan")
+        b_rhr = float(np.mean(rhr_vals)) if rhr_vals else float("nan")
+        b_eff = float(np.mean(eff_vals)) if eff_vals else float("nan")
+        b_std = float(np.std(sbp_vals, ddof=1)) if len(sbp_vals) > 1 else 3.5
+        b_med = float(np.mean(med_vals)) if med_vals else 1.0
+
+        morning_sbps = [r.value for r in first_30d_readings if r.sensor_type == "home_sbp" and r.recorded_at.hour < 12]
+        evening_sbps = [r.value for r in first_30d_readings if r.sensor_type == "home_sbp" and r.recorded_at.hour >= 12]
+        if morning_sbps and evening_sbps:
+            b_surge = float(np.mean(morning_sbps) - np.mean(evening_sbps))
+        else:
+            b_surge = 3.0 if not np.isnan(b_sbp) else float("nan")
+
+        return {
+            "baseline_sbp": round(b_sbp, 1) if not np.isnan(b_sbp) else float("nan"),
+            "baseline_dbp": round(b_dbp, 1) if not np.isnan(b_dbp) else float("nan"),
+            "baseline_sleep_hours": round(b_sleep, 2) if not np.isnan(b_sleep) else float("nan"),
+            "baseline_hrv_rmssd": round(b_hrv, 1) if not np.isnan(b_hrv) else float("nan"),
+            "baseline_resting_hr": round(b_rhr, 1) if not np.isnan(b_rhr) else float("nan"),
+            "baseline_sleep_efficiency": round(b_eff, 3) if not np.isnan(b_eff) else float("nan"),
+            "baseline_sbp_std": round(b_std, 2),
+            "baseline_morning_surge": round(b_surge, 1) if not np.isnan(b_surge) else 3.0,
+            "baseline_adherence": round(b_med, 2),
+        }
+
     def get_patient_static_dict(self, patient: Patient) -> Dict[str, Any]:
         """Convert patient and EHR events to the static feature dictionary expected by FeatureEngineeringPipeline."""
         events = self.get_patient_ehr_events(patient.patient_id)
@@ -72,20 +140,13 @@ class EHRService:
         egfr = get_lab_val("33914-3", 55.0 if has_ckd else 85.0)
         potassium = get_lab_val("2823-3", 4.3)
 
-        # Baseline hemodynamics conditioned on archetype
-        archetype = patient.archetype
-        if archetype == "well_controlled":
-            b_sbp, b_dbp, b_sleep, b_hrv, b_rhr = 118.0, 75.0, 7.6, 46.0, 61.0
-        elif archetype == "controlled_hypertensive":
-            b_sbp, b_dbp, b_sleep, b_hrv, b_rhr = 125.0, 79.0, 7.1, 37.0, 65.0
-        elif archetype == "poor_sleep_risk":
-            b_sbp, b_dbp, b_sleep, b_hrv, b_rhr = 135.0, 86.0, 5.4, 24.0, 73.0
-        elif archetype == "non_adherent":
-            b_sbp, b_dbp, b_sleep, b_hrv, b_rhr = 136.0, 87.0, 6.8, 32.0, 69.0
-        elif archetype == "sedentary_high_risk":
-            b_sbp, b_dbp, b_sleep, b_hrv, b_rhr = 139.0, 88.5, 6.3, 22.0, 76.0
-        else:  # osa_suspected
-            b_sbp, b_dbp, b_sleep, b_hrv, b_rhr = 138.0, 88.0, 5.8, 25.0, 74.0
+        # Personal baselines estimated from each patient's first 30 days of stored sensor data
+        baselines = self.compute_patient_30d_baseline(patient.patient_id)
+        b_sbp = baselines.get("baseline_sbp")
+        b_dbp = baselines.get("baseline_dbp")
+        b_sleep = baselines.get("baseline_sleep_hours")
+        b_hrv = baselines.get("baseline_hrv_rmssd")
+        b_rhr = baselines.get("baseline_resting_hr")
 
         return {
             "patient_id": patient.patient_id,
@@ -102,6 +163,10 @@ class EHRService:
             "baseline_hrv_rmssd": b_hrv,
             "baseline_resting_hr": b_rhr,
             "baseline_sleep_hours": b_sleep,
+            "baseline_sleep_efficiency": baselines.get("baseline_sleep_efficiency"),
+            "baseline_sbp_std": baselines.get("baseline_sbp_std"),
+            "baseline_morning_surge": baselines.get("baseline_morning_surge"),
+            "baseline_adherence": baselines.get("baseline_adherence"),
             "family_history_cvd": has_family_cvd,
             "diabetes": has_dm,
             "ckd": has_ckd,

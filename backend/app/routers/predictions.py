@@ -38,10 +38,41 @@ def get_operating_thresholds():
 @router.get("/api/patients/{patient_id}/risk", response_model=PredictionResponse)
 def get_patient_risk(patient_id: str, db: Session = Depends(get_db)):
     """Retrieve most recent 24-hour hypertensive episode risk forecast."""
+    ehr = EHRService(db)
+    patient = ehr.get_patient(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
+
+    from backend.app.services.fusion_service import FusionService
+    from backend.app.models import SensorReading
+    from sqlalchemy import select
+
+    fusion_svc = FusionService(db)
+    overall_cov, _ = fusion_svc.compute_data_coverage(patient_id, days_lookback=7)
+
     pred_svc = PredictionService(db)
     pred = pred_svc.get_latest_prediction(patient_id)
+
     if not pred:
+        # Check if patient has readings but coverage is too low
+        if overall_cov < (settings.min_coverage_threshold * 100.0):
+            has_readings = db.execute(
+                select(SensorReading).where(SensorReading.patient_id == patient_id)
+            ).scalars().first()
+            if has_readings is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Prediction refused: Data coverage ({overall_cov:.1f}%) is below minimum threshold ({settings.min_coverage_threshold * 100.0:.1f}%)."
+                )
         raise HTTPException(status_code=404, detail=f"No predictions found for patient {patient_id}.")
+
+    snap = pred.feature_snapshot or {}
+    pred_cov = snap.get("_data_coverage_pct", overall_cov)
+    conf_score = snap.get("_confidence_score", 0.95)
+    conf_interval = [
+        snap.get("_confidence_lower", max(0.0, round(pred.probability - 0.08, 4))),
+        snap.get("_confidence_upper", min(1.0, round(pred.probability + 0.08, 4))),
+    ]
 
     top_factors_data = [
         TopFactor(
@@ -64,6 +95,9 @@ def get_patient_risk(patient_id: str, db: Session = Depends(get_db)):
         generated_at=pred.generated_at,
         top_factors=top_factors_data,
         feature_snapshot=pred.feature_snapshot or {},
+        data_coverage=pred_cov,
+        confidence=conf_score,
+        confidence_interval=conf_interval,
     )
 
 

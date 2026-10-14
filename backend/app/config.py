@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     risk_threshold_moderate: float = Field(default=0.35, validation_alias=AliasChoices("RISK_THRESHOLD_MODERATE", "risk_threshold_moderate"))
     risk_threshold_high: float = Field(default=0.65, validation_alias=AliasChoices("RISK_THRESHOLD_HIGH", "risk_threshold_high"))
 
+    # Data Quality & Coverage Threshold
+    min_coverage_threshold: float = Field(default=0.50, validation_alias=AliasChoices("MIN_COVERAGE_THRESHOLD", "min_coverage_threshold"))
+
     # Alert Cooldown
     alert_cooldown_hours: float = Field(default=24.0, validation_alias=AliasChoices("ALERT_COOLDOWN_HOURS", "alert_cooldown_hours"))
 

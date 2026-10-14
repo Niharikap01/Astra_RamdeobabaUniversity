@@ -140,7 +140,7 @@ class ModelExplainer:
             items.append({
                 "feature": feat_name,
                 "display_name": display_name,
-                "value": round(val, 2),
+                "value": round(val, 2) if not np.isnan(val) else 0.0,
                 "impact": round(float(shap_impact), 4),
                 "is_risk_driver": bool(shap_impact > 0),
                 "reason": reason,
@@ -175,6 +175,12 @@ class ModelExplainer:
     def _generate_clinical_reason(self, feature: str, value: float, impact: float) -> str:
         """Translate signed feature attribution into clear, clinician-oriented physiological explanation."""
         is_risk = impact > 0
+
+        if pd.isna(value) or (isinstance(value, float) and np.isnan(value)):
+            display = FEATURE_DISPLAY_NAMES.get(feature, feature.replace("_", " ").title())
+            if is_risk:
+                return f"Missing or unrecorded {display} data associated with increased uncertainty."
+            return f"{display} unrecorded for this interval."
 
         if feature == "sleep_duration_last_night":
             if is_risk:

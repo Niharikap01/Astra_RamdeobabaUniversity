@@ -94,6 +94,9 @@ class PredictionResponse(BaseModel):
     generated_at: datetime
     top_factors: List[TopFactor] = []
     feature_snapshot: Dict[str, float] = {}
+    data_coverage: Optional[float] = None
+    confidence: Optional[float] = None
+    confidence_interval: Optional[List[float]] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -195,7 +198,7 @@ class RiskHorizonResponse(BaseModel):
     per_source_coverage: Dict[str, float]
     peak_risk_window: PeakRiskWindow
     series: List[RiskHorizonPoint]
-    nocturnal_dipping_pct: float
+    nocturnal_dipping_pct: Optional[float] = None
     morning_surge_magnitude: float
     risk_summary_text: str
 
@@ -213,10 +216,10 @@ class FactorChangeItem(BaseModel):
 class WhyRiskChangedResponse(BaseModel):
     patient_id: str
     current_risk_pct: float
-    previous_risk_pct: float
-    risk_delta_pct: float
+    previous_risk_pct: Optional[float] = None
+    risk_delta_pct: Optional[float] = None
     summary: str
-    factors: List[FactorChangeItem]
+    factors: List[FactorChangeItem] = []
     trust_statement: str
 
 
@@ -225,15 +228,15 @@ class WhyRiskChangedResponse(BaseModel):
 # ==============================================================================
 
 class DynamicState(BaseModel):
-    latest_sbp: float
-    latest_dbp: float
-    sbp_7d_mean: float
-    sleep_last_night: float
-    sleep_efficiency: float
-    hrv_last_night: float
-    resting_hr_last_night: float
-    steps_yesterday: int
-    medication_taken_last_night: int
+    latest_sbp: Optional[float] = None
+    latest_dbp: Optional[float] = None
+    sbp_7d_mean: Optional[float] = None
+    sleep_last_night: Optional[float] = None
+    sleep_efficiency: Optional[float] = None
+    hrv_last_night: Optional[float] = None
+    resting_hr_last_night: Optional[float] = None
+    steps_yesterday: Optional[int] = None
+    medication_taken_last_night: Optional[int] = None
 
 
 class StaticProfile(BaseModel):
@@ -242,8 +245,8 @@ class StaticProfile(BaseModel):
     bmi: float
     diagnoses: List[str]
     medications: List[str]
-    baseline_hrv_30d: float
-    baseline_sleep_30d: float
+    baseline_hrv_30d: Optional[float] = None
+    baseline_sleep_30d: Optional[float] = None
 
 
 class RadarAxisValue(BaseModel):
@@ -256,12 +259,18 @@ class RadarAxisValue(BaseModel):
 
 
 class SleepFingerprintData(BaseModel):
-    sleep_duration_deviation_pct: float
-    sleep_efficiency_deviation_pct: float
-    hrv_deviation_pct: float
-    resting_hr_deviation_pct: float
-    bp_stability_deviation_pct: float
-    nocturnal_dipping_deviation_pct: float
+    nocturnal_bp_stability_pct: float
+    autonomic_resilience_pct: float
+    sleep_continuity_pct: float
+    morning_surge_control_pct: float
+    medication_coverage_pct: float
+    recovery_capacity_pct: float
+    sleep_duration_deviation_pct: Optional[float] = None
+    sleep_efficiency_deviation_pct: Optional[float] = None
+    hrv_deviation_pct: Optional[float] = None
+    resting_hr_deviation_pct: Optional[float] = None
+    bp_stability_deviation_pct: Optional[float] = None
+    nocturnal_dipping_deviation_pct: Optional[float] = None
     axes: List[RadarAxisValue] = []
     status: str  # optimal, degraded, acute_deficit
     summary: str

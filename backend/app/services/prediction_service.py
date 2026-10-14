@@ -75,12 +75,30 @@ class PredictionService:
             logger.error(f"Failed to load ML artifacts: {e}", exc_info=True)
             raise RuntimeError(f"Unable to initialize ML model artifacts: {e}")
 
-    def score_features(self, features_dict: Dict[str, float]) -> Tuple[float, str, List[Dict[str, Any]]]:
+    def compute_confidence(
+        self,
+        prob: float,
+        coverage_pct: Optional[float] = None,
+    ) -> Tuple[float, List[float]]:
+        """Compute coverage-aware confidence score and confidence interval."""
+        import math
+        cov = coverage_pct if coverage_pct is not None else 100.0
+        cov_ratio = max(0.1, min(1.0, cov / 100.0))
+        confidence_margin = round(min(0.25, 0.08 / math.sqrt(cov_ratio)), 4)
+        confidence_score = round(max(0.1, min(1.0, cov_ratio * (1.0 - 0.2 * abs(prob - 0.5)))), 3)
+        conf_lower = max(0.0, round(prob - confidence_margin, 4))
+        conf_upper = min(1.0, round(prob + confidence_margin, 4))
+        return confidence_score, [conf_lower, conf_upper]
+
+    def score_features(
+        self,
+        features_dict: Dict[str, float],
+    ) -> Tuple[float, str, List[Dict[str, Any]]]:
         """Compute calibrated probability, risk tier, and top clinical drivers."""
         assert self._feature_names is not None
         assert self._calibrator is not None
 
-        x_row = np.array([[features_dict.get(k, 0.0) for k in self._feature_names]], dtype=float)
+        x_row = np.array([[features_dict.get(k, float("nan")) for k in self._feature_names]], dtype=float)
         prob = float(self._calibrator.predict_proba(x_row)[0, 1])
 
         # Clinical Risk Band classification
@@ -102,9 +120,35 @@ class PredictionService:
         self,
         patient_id: str,
         features_dict: Dict[str, float],
+        enforce_coverage: bool = True,
     ) -> Prediction:
-        """Score patient feature vector and persist to predictions table."""
+        """Score patient feature vector and persist to predictions table with coverage-aware confidence."""
+        from backend.app.services.fusion_service import FusionService
+        from backend.app.models import SensorReading
+        from sqlalchemy import select
+
+        fusion_svc = FusionService(self.db)
+        overall_cov, _ = fusion_svc.compute_data_coverage(patient_id, days_lookback=7)
+
+        if enforce_coverage and overall_cov < (settings.min_coverage_threshold * 100.0):
+            # Check if patient has any readings at all in the DB
+            any_reading = self.db.execute(
+                select(SensorReading).where(SensorReading.patient_id == patient_id)
+            ).scalars().first()
+            if any_reading is not None:
+                raise ValueError(
+                    f"Prediction refused: Data coverage ({overall_cov:.1f}%) is below minimum threshold "
+                    f"({settings.min_coverage_threshold * 100.0:.1f}%)."
+                )
+
         prob, risk_level, top_factors = self.score_features(features_dict)
+        conf_score, conf_interval = self.compute_confidence(prob, coverage_pct=overall_cov)
+
+        snapshot = dict(features_dict)
+        snapshot["_data_coverage_pct"] = overall_cov
+        snapshot["_confidence_score"] = conf_score
+        snapshot["_confidence_lower"] = conf_interval[0]
+        snapshot["_confidence_upper"] = conf_interval[1]
 
         pred_record = Prediction(
             patient_id=patient_id,
@@ -113,7 +157,7 @@ class PredictionService:
             model_version=self._model_version,
             generated_at=datetime.now(timezone.utc),
             top_factors=top_factors,
-            feature_snapshot=features_dict,
+            feature_snapshot=snapshot,
         )
         self.db.add(pred_record)
         self.db.commit()
