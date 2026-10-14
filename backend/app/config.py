@@ -3,49 +3,57 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import List
-from pydantic import Field
+from pydantic import Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve PROJECT_ROOT from this config file's location:
+# backend/app/config.py -> parent is app, parent.parent is backend, parent.parent.parent is repository root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
     """Application settings with environment variable override support."""
 
+    project_root: Path = PROJECT_ROOT
     app_name: str = "NightWatch"
     tagline: str = "A Sleep-Aware Digital Twin for Proactive Hypertension Risk Prediction"
-    environment: str = Field(default="development", env="ENVIRONMENT")
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
-    host: str = Field(default="0.0.0.0", env="APP_HOST")
-    port: int = Field(default=8000, env="APP_PORT")
+    environment: str = Field(default="development", validation_alias=AliasChoices("ENVIRONMENT", "environment"))
+    log_level: str = Field(default="INFO", validation_alias=AliasChoices("LOG_LEVEL", "log_level"))
+    host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("APP_HOST", "host"))
+    port: int = Field(default=8000, validation_alias=AliasChoices("APP_PORT", "port"))
 
     # Database
     database_url: str = Field(
         default="sqlite:///./nightwatch.db",
-        env="DATABASE_URL",
+        validation_alias=AliasChoices("DATABASE_URL", "database_url"),
     )
 
     # CORS
     cors_origins: str = Field(
-        default="http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000,*",
-        env="CORS_ORIGINS",
+        default="http://localhost:5173",
+        validation_alias=AliasChoices("CORS_ORIGINS", "cors_origins"),
     )
 
     # Clinical Risk Bands
-    risk_threshold_moderate: float = Field(default=0.35, env="RISK_THRESHOLD_MODERATE")
-    risk_threshold_high: float = Field(default=0.65, env="RISK_THRESHOLD_HIGH")
+    risk_threshold_moderate: float = Field(default=0.35, validation_alias=AliasChoices("RISK_THRESHOLD_MODERATE", "risk_threshold_moderate"))
+    risk_threshold_high: float = Field(default=0.65, validation_alias=AliasChoices("RISK_THRESHOLD_HIGH", "risk_threshold_high"))
 
     # Alert Cooldown
-    alert_cooldown_hours: float = Field(default=24.0, env="ALERT_COOLDOWN_HOURS")
+    alert_cooldown_hours: float = Field(default=24.0, validation_alias=AliasChoices("ALERT_COOLDOWN_HOURS", "alert_cooldown_hours"))
 
     # Simulation defaults
-    simulation_patient_count: int = Field(default=200, env="SIMULATION_PATIENT_COUNT")
-    simulation_history_days: int = Field(default=120, env="SIMULATION_HISTORY_DAYS")
-    simulation_step_seconds: float = Field(default=10.0, env="SIMULATION_STEP_SECONDS")
-    simulation_random_seed: int = Field(default=42, env="SIMULATION_RANDOM_SEED")
+    simulation_patient_count: int = Field(default=200, validation_alias=AliasChoices("SIMULATION_PATIENT_COUNT", "simulation_patient_count"))
+    simulation_history_days: int = Field(default=120, validation_alias=AliasChoices("SIMULATION_HISTORY_DAYS", "simulation_history_days"))
+    simulation_step_seconds: float = Field(default=10.0, validation_alias=AliasChoices("SIMULATION_STEP_SECONDS", "simulation_step_seconds"))
+    simulation_random_seed: int = Field(default=42, validation_alias=AliasChoices("SIMULATION_RANDOM_SEED", "simulation_random_seed"))
 
-    # ML Artifacts
-    ml_artifacts_dir: str = Field(default="ml/artifacts", env="ML_ARTIFACTS_DIR")
-    model_version: str = Field(default="1.1.0", env="MODEL_VERSION")
+    # ML Artifacts, Data, and Documentation paths
+    ml_artifacts_dir: str = Field(default="ml/artifacts", validation_alias=AliasChoices("ML_ARTIFACTS_DIR", "ml_artifacts_dir"))
+    data_dir: str = Field(default="data", validation_alias=AliasChoices("DATA_DIR", "data_dir"))
+    docs_dir: str = Field(default="docs", validation_alias=AliasChoices("DOCS_DIR", "docs_dir"))
+    model_version: str = Field(default="1.1.0", validation_alias=AliasChoices("MODEL_VERSION", "model_version"))
 
     # Clinical Disclaimers
     clinical_disclaimer: str = (
@@ -60,15 +68,37 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(PROJECT_ROOT / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def _validate_db_url(cls, v: str) -> str:
+        """Resolve relative SQLite file paths against PROJECT_ROOT."""
+        if v.startswith("sqlite:///") and not v.startswith("sqlite:///:memory:"):
+            raw_path = v[len("sqlite:///"):]
+            path_obj = Path(raw_path)
+            if not path_obj.is_absolute():
+                path_obj = (PROJECT_ROOT / path_obj).resolve()
+            return f"sqlite:///{path_obj.as_posix()}"
+        return v
+
+    @field_validator("ml_artifacts_dir", "data_dir", "docs_dir", mode="after")
+    @classmethod
+    def _validate_relative_paths(cls, v: str) -> str:
+        """Resolve relative paths against PROJECT_ROOT."""
+        path_obj = Path(v)
+        if not path_obj.is_absolute():
+            path_obj = (PROJECT_ROOT / path_obj).resolve()
+        return str(path_obj)
+
     @property
     def cors_origin_list(self) -> List[str]:
-        """Parse comma-separated CORS origins."""
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        """Parse comma-separated CORS origins, disallowing wildcard when credentials are used."""
+        origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip() and origin.strip() != "*"]
+        return origins if origins else ["http://localhost:5173"]
 
 
 settings = Settings()

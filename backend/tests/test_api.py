@@ -5,13 +5,59 @@ import pytest
 
 
 def test_health_check(test_client):
-    """GET /health"""
+    """GET /health returns 200 healthy when DB and model are available."""
     res = test_client.get("/health")
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "healthy"
     assert data["service"] == "NightWatch"
     assert data["database"] == "connected"
+    assert data["model_loaded"] is True
+
+
+def test_health_check_db_failure(test_client):
+    """GET /health returns 503 unhealthy when database SELECT 1 fails."""
+    from unittest.mock import MagicMock
+    from backend.app.database import get_db
+    from backend.app.main import app
+
+    mock_session = MagicMock()
+    mock_session.execute.side_effect = Exception("Database connection failure")
+
+    def failing_get_db():
+        yield mock_session
+
+    app.dependency_overrides[get_db] = failing_get_db
+    try:
+        res = test_client.get("/health")
+        assert res.status_code == 503
+        data = res.json()
+        assert data["status"] == "unhealthy"
+        assert data["database"] == "disconnected"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_health_check_model_not_loaded(test_client, monkeypatch):
+    """GET /health returns 503 unhealthy when model is not loaded."""
+    from backend.app.services.prediction_service import PredictionService
+
+    monkeypatch.setattr(PredictionService, "_model", None)
+    res = test_client.get("/health")
+    assert res.status_code == 503
+    data = res.json()
+    assert data["status"] == "unhealthy"
+    assert data["model_loaded"] is False
+
+
+def test_config_app_port_env(monkeypatch):
+    """Verify that Settings reads APP_PORT from environment (port == 9123)."""
+    from backend.app.config import Settings
+
+    monkeypatch.setenv("APP_PORT", "9123")
+    custom_settings = Settings()
+    assert custom_settings.port == 9123
+
 
 
 def test_patients_endpoints(test_client, seeded_patient):

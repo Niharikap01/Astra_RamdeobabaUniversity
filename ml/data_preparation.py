@@ -30,17 +30,20 @@ class DataPreparationPipeline:
         num_patients: int = 200,
         history_days: int = 120,
         seed: int = 42,
-        raw_dir: str = "data/raw",
-        processed_dir: str = "data/processed",
+        raw_dir: Optional[str] = None,
+        processed_dir: Optional[str] = None,
     ) -> None:
+        from backend.app.config import PROJECT_ROOT
+        from pathlib import Path
+
         self.num_patients = num_patients
         self.history_days = history_days
         self.seed = seed
-        self.raw_dir = raw_dir
-        self.processed_dir = processed_dir
+        self.raw_dir = str(Path(raw_dir) if raw_dir and Path(raw_dir).is_absolute() else (PROJECT_ROOT / (raw_dir or "data/raw")))
+        self.processed_dir = str(Path(processed_dir) if processed_dir and Path(processed_dir).is_absolute() else (PROJECT_ROOT / (processed_dir or "data/processed")))
 
-        os.makedirs(raw_dir, exist_ok=True)
-        os.makedirs(processed_dir, exist_ok=True)
+        os.makedirs(self.raw_dir, exist_ok=True)
+        os.makedirs(self.processed_dir, exist_ok=True)
 
         self.ehr_sim = EHRSimulator(seed=seed)
         self.wearable_sim = WearableSimulator(seed=seed)

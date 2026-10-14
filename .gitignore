@@ -21,14 +21,18 @@ wheels/
 .installed.cfg
 *.egg
 .pytest_cache/
+**/.pytest_cache/
 .coverage
+**/.coverage
 htmlcov/
 *.sqlite3
 *.db
 nightwatch.db
+backend/nightwatch.db
 
 # Virtual Environment
 .venv/
+.venv_check/
 venv/
 ENV/
 

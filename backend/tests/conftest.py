@@ -1,5 +1,3 @@
-import os
-os.environ["TESTING"] = "1"
 """Pytest fixtures for NightWatch test suite."""
 
 import os

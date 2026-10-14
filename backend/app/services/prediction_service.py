@@ -33,6 +33,11 @@ class PredictionService:
         self._ensure_model_loaded()
 
     @classmethod
+    def is_model_loaded(cls) -> bool:
+        """Check whether the ML model, calibrator, and feature names are loaded."""
+        return cls._model is not None and cls._calibrator is not None and cls._feature_names is not None
+
+    @classmethod
     def _ensure_model_loaded(cls) -> None:
         """Load serialized LightGBM and calibrator artifacts; trigger automated training if missing."""
         if cls._model is not None and cls._calibrator is not None:
@@ -45,7 +50,12 @@ class PredictionService:
         if not (os.path.exists(model_path) and os.path.exists(calibrator_path) and os.path.exists(features_path)):
             logger.warning("ML artifacts not found. Initiating automated model training and calibration...")
             from ml.train_lightgbm import LightGBMTrainer
-            trainer = LightGBMTrainer(artifacts_dir=settings.ml_artifacts_dir)
+            from pathlib import Path
+            trainer = LightGBMTrainer(
+                artifacts_dir=settings.ml_artifacts_dir,
+                data_dir=str(Path(settings.data_dir) / "processed"),
+                docs_dir=settings.docs_dir,
+            )
             trainer.run_full_pipeline(force_regenerate=True)
 
         try:

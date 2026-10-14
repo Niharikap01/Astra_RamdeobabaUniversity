@@ -651,23 +651,27 @@ Results come from synthetic data with assumptions built into the simulator, and 
 
 def main() -> None:
     """Execute end-to-end robust evaluation pipeline and write all artifacts."""
-    artifacts_dir = "ml/artifacts"
-    docs_dir = "docs"
+    from backend.app.config import PROJECT_ROOT
+    from pathlib import Path
+
+    artifacts_dir = str(PROJECT_ROOT / "ml" / "artifacts")
+    docs_dir = str(PROJECT_ROOT / "docs")
+    data_dir = PROJECT_ROOT / "data"
     os.makedirs(artifacts_dir, exist_ok=True)
     os.makedirs(docs_dir, exist_ok=True)
 
     # 1. Load data
     logger.info("Loading processed dataset and raw cohort...")
-    dataset_df = pd.read_parquet("data/processed/features_all.parquet")
-    records_df = pd.read_parquet("data/raw/records_daily.parquet")
-    patients_df = pd.read_parquet("data/raw/patients.parquet")
-    val_df = pd.read_parquet("data/processed/val.parquet")
+    dataset_df = pd.read_parquet(data_dir / "processed" / "features_all.parquet")
+    records_df = pd.read_parquet(data_dir / "raw" / "records_daily.parquet")
+    patients_df = pd.read_parquet(data_dir / "raw" / "patients.parquet")
+    val_df = pd.read_parquet(data_dir / "processed" / "val.parquet")
 
     # 2. 5-Fold GroupKFold Ablation
     kfold_res = run_group_kfold_pipeline(dataset_df, n_splits=5, seed=42)
 
     # 3. Derive operating thresholds on validation set
-    test_df = pd.read_parquet("data/processed/test.parquet")
+    test_df = pd.read_parquet(data_dir / "processed" / "test.parquet")
     val_feats = val_df[FEATURE_SETS["full"]].values
     val_probs = kfold_res["best_calibrator"].predict_proba(val_feats)[:, 1]
     tau_high, tau_mod, val_thresh_info = derive_operating_thresholds(val_df, val_probs)

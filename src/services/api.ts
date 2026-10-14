@@ -18,7 +18,7 @@ import {
   WhyRiskChangedResponse,
 } from "../types";
 
-// Prefer relative path which Vite proxies to localhost:8001, or direct env variable
+// Prefer relative path which Vite proxies to localhost:8000, or direct env variable
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
@@ -158,7 +158,7 @@ export function createTwinWebSocket(
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    // Connect through Vite proxy /ws/twin/{id} or direct 8001
+    // Connect through Vite proxy /ws/twin/{id} or direct 8000
     const wsUrl = `${protocol}//${host}/ws/twin/${patientId}`;
 
     try {

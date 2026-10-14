@@ -9,13 +9,13 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from backend.app.config import settings
 from backend.app.database import SessionLocal, init_db, get_db
-from backend.app.models import Patient
 from backend.app.routers import (
     patients,
     predictions,
@@ -37,21 +37,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Startup and shutdown lifecycle."""
     logger.info("Initializing NightWatch database and model runtime...")
     init_db()
-
-    # Auto-seed if database is empty and not in test mode
-    db = SessionLocal()
-    try:
-        import os
-        if os.environ.get("TESTING") != "1":
-            patient_count = db.execute(select(Patient)).scalars().first()
-            if not patient_count:
-                logger.info("Empty database detected. Running initial cohort seeding...")
-                from backend.scripts.seed import seed_database
-                seed_database(num_patients=settings.simulation_patient_count, days=settings.simulation_history_days)
-    except Exception as e:
-        logger.error(f"Startup database check error: {e}", exc_info=True)
-    finally:
-        db.close()
 
     # Ensure ML artifacts are loaded
     db_pred = SessionLocal()
@@ -93,28 +78,37 @@ app.include_router(simulation.router)
 
 
 @app.get("/health", tags=["Health"])
-def health_check():
+def health_check(response: Response, db: Session = Depends(get_db)):
     """Service health and readiness check."""
+    db_connected = False
+    try:
+        db.execute(text("SELECT 1"))
+        db_connected = True
+    except Exception as e:
+        logger.error(f"Health check database query failure: {e}")
+        db_connected = False
+
+    model_loaded = PredictionService.is_model_loaded()
+    is_healthy = db_connected and model_loaded
+
+    if not is_healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
     return {
-        "status": "healthy",
+        "status": "healthy" if is_healthy else "unhealthy",
         "service": settings.app_name,
         "tagline": settings.tagline,
         "version": settings.model_version,
         "environment": settings.environment,
-        "database": "connected",
-        "model_loaded": True,
+        "database": "connected" if db_connected else "disconnected",
+        "model_loaded": model_loaded,
     }
 
 
 @app.websocket("/ws/twin/{patient_id}")
-async def websocket_twin_endpoint(websocket: WebSocket, patient_id: str):
+async def websocket_twin_endpoint(websocket: WebSocket, patient_id: str, db: Session = Depends(get_db)):
     """Real-time bidirectional WebSocket stream for patient digital twin updates."""
     await ws_manager.connect(websocket, patient_id)
-    if get_db in app.dependency_overrides:
-        db = next(app.dependency_overrides[get_db]())
-    else:
-        db = SessionLocal()
-
     try:
         twin_svc = TwinService(db)
         twin_state = twin_svc.build_twin(patient_id)
@@ -136,4 +130,3 @@ async def websocket_twin_endpoint(websocket: WebSocket, patient_id: str):
         logger.warning(f"WebSocket error for patient {patient_id}: {e}")
     finally:
         ws_manager.disconnect(websocket, patient_id)
-        db.close()

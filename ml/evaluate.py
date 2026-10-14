@@ -10,11 +10,10 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+
 import numpy as np
 from sklearn.calibration import calibration_curve
 from sklearn.metrics import (
@@ -36,13 +35,14 @@ class ModelEvaluator:
 
     def __init__(
         self,
-        artifacts_dir: str = "ml/artifacts",
-        docs_dir: str = "docs",
+        artifacts_dir: Optional[str] = None,
+        docs_dir: Optional[str] = None,
     ) -> None:
-        self.artifacts_dir = artifacts_dir
-        self.docs_dir = docs_dir
-        os.makedirs(artifacts_dir, exist_ok=True)
-        os.makedirs(docs_dir, exist_ok=True)
+        from backend.app.config import PROJECT_ROOT
+        self.artifacts_dir = str(Path(artifacts_dir) if artifacts_dir and Path(artifacts_dir).is_absolute() else (PROJECT_ROOT / (artifacts_dir or "ml/artifacts")))
+        self.docs_dir = str(Path(docs_dir) if docs_dir and Path(docs_dir).is_absolute() else (PROJECT_ROOT / (docs_dir or "docs")))
+        os.makedirs(self.artifacts_dir, exist_ok=True)
+        os.makedirs(self.docs_dir, exist_ok=True)
 
     def evaluate_predictions(
         self,
@@ -141,6 +141,10 @@ class ModelEvaluator:
         robust_summary: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> None:
         """Render publication-quality ROC, PR, Calibration, and Ablation comparison figures."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
         # Figure 1: ROC and PR Curves
         fig, axes = plt.subplots(1, 2, figsize=(13, 5.5))
 

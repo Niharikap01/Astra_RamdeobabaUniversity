@@ -12,6 +12,7 @@ import argparse
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
@@ -36,15 +37,18 @@ class LightGBMTrainer:
 
     def __init__(
         self,
-        artifacts_dir: str = "ml/artifacts",
-        data_dir: str = "data/processed",
+        artifacts_dir: Optional[str] = None,
+        data_dir: Optional[str] = None,
+        docs_dir: Optional[str] = None,
         seed: int = 42,
     ) -> None:
-        self.artifacts_dir = artifacts_dir
-        self.data_dir = data_dir
+        from backend.app.config import PROJECT_ROOT
+        self.artifacts_dir = str(Path(artifacts_dir) if artifacts_dir and Path(artifacts_dir).is_absolute() else (PROJECT_ROOT / (artifacts_dir or "ml/artifacts")))
+        self.data_dir = str(Path(data_dir) if data_dir and Path(data_dir).is_absolute() else (PROJECT_ROOT / (data_dir or "data/processed")))
+        self.docs_dir = str(Path(docs_dir) if docs_dir and Path(docs_dir).is_absolute() else (PROJECT_ROOT / (docs_dir or "docs")))
         self.seed = seed
-        self.evaluator = ModelEvaluator(artifacts_dir=artifacts_dir)
-        os.makedirs(artifacts_dir, exist_ok=True)
+        self.evaluator = ModelEvaluator(artifacts_dir=self.artifacts_dir, docs_dir=self.docs_dir)
+        os.makedirs(self.artifacts_dir, exist_ok=True)
 
     def load_or_generate_data(
         self, force_regenerate: bool = False
@@ -70,7 +74,12 @@ class LightGBMTrainer:
             return train_df, val_df, test_df, all_df
 
         logger.info("Processed datasets not found or regeneration requested. Running data preparation pipeline...")
-        pipeline = DataPreparationPipeline(seed=self.seed)
+        from backend.app.config import PROJECT_ROOT
+        pipeline = DataPreparationPipeline(
+            seed=self.seed,
+            raw_dir=str(PROJECT_ROOT / "data" / "raw"),
+            processed_dir=self.data_dir,
+        )
         train_df, val_df, test_df = pipeline.run(save_artifacts=True)
         all_df = pd.read_parquet(all_path)
         return train_df, val_df, test_df, all_df
