@@ -38,9 +38,12 @@ ENV/
 
 # Node / Frontend
 node_modules/
+dashboard/node_modules/
 .npm
 dist/
+dashboard/dist/
 .vite/
+dashboard/.vite/
 *.local
 
 # ML artifacts & runtime data

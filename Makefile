@@ -15,7 +15,7 @@ help:
 install:
 	pip install -r backend/requirements.txt
 	pip install -r ml/requirements.txt
-	npm install
+	cd dashboard && npm install
 
 train:
 	python -m ml.train_lightgbm
@@ -27,7 +27,7 @@ run-backend:
 	uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 
 run-dashboard:
-	npm run dev
+	cd dashboard && npm run dev
 
 docker-up:
 	docker compose up --build
