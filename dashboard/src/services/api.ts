@@ -6,6 +6,7 @@
 import {
   AlertResponse,
   DigitalTwinResponse,
+  OperatingThresholdsResponse,
   PatientProfileDetail,
   PatientSummary,
   PredictionResponse,
@@ -76,6 +77,10 @@ export const api = {
       body: JSON.stringify(reading),
     }),
 
+  // Thresholds
+  getOperatingThresholds: () =>
+    fetchJson<OperatingThresholdsResponse>("/api/thresholds"),
+
   // Alerts & Triage
   getPatientAlerts: (id: string) =>
     fetchJson<AlertResponse[]>(`/api/patients/${id}/alerts`),
@@ -86,16 +91,16 @@ export const api = {
       body: JSON.stringify({ clinician_name: clinicianName, comment }),
     }),
 
-  snoozeAlert: (alertId: string, clinicianName = "Dr. Clinician", snoozeHours = 4.0, reason = "Awaiting repeat cuff reading") =>
+  snoozeAlert: (alertId: string, clinicianName = "Dr. Clinician", snoozeHours = 4.0, reason?: string) =>
     fetchJson<AlertResponse>(`/api/alerts/${alertId}/snooze`, {
       method: "POST",
-      body: JSON.stringify({ clinician_name: clinicianName, snooze_hours: snoozeHours, reason }),
+      body: JSON.stringify({ clinician_name: clinicianName, snooze_hours: snoozeHours, reason: reason || null }),
     }),
 
-  markFalsePositive: (alertId: string, clinicianName = "Dr. Clinician", reason = "Transient situational anomaly") =>
+  markFalsePositive: (alertId: string, clinicianName = "Dr. Clinician", reason?: string) =>
     fetchJson<AlertResponse>(`/api/alerts/${alertId}/false-positive`, {
       method: "POST",
-      body: JSON.stringify({ clinician_name: clinicianName, reason }),
+      body: JSON.stringify({ clinician_name: clinicianName, reason: reason || null }),
     }),
 
   addClinicianNote: (patientId: string, note: string, alertId?: string) =>

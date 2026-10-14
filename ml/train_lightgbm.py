@@ -280,8 +280,43 @@ class LightGBMTrainer:
         with open(features_save_path, "w") as f:
             json.dump(full_features, f, indent=2)
 
+        # Derive operating thresholds strictly from VALIDATION data only
+        val_prob_cal = full_calibrator.predict_proba(val_df[full_features].values)[:, 1]
+        from ml.robustness import derive_operating_thresholds, evaluate_operating_point
+        tau_high, tau_mod, val_thresh_info = derive_operating_thresholds(val_df, val_prob_cal)
+        logger.info(f"Derived Operating Thresholds on Validation set: Moderate={tau_mod:.2f}, High={tau_high:.2f}")
+
+        # Evaluate operating thresholds honestly on test split
+        test_weeks = len(test_df) / 7.0
+        test_eval_high = evaluate_operating_point(
+            y_true=y_test_full,
+            y_prob=y_prob_cal,
+            threshold=tau_high,
+            total_weeks=test_weeks,
+        )
+        test_eval_mod = evaluate_operating_point(
+            y_true=y_test_full,
+            y_prob=y_prob_cal,
+            threshold=tau_mod,
+            total_weeks=test_weeks,
+        )
+
         with open(version_save_path, "w") as f:
             f.write(MODEL_VERSION)
+
+        thresholds_save_path = os.path.join(self.artifacts_dir, "thresholds.json")
+        thresholds_payload = {
+            "moderate": float(round(tau_mod, 4)),
+            "high": float(round(tau_high, 4)),
+            "derived_from": "validation",
+            "validation_metrics": val_thresh_info,
+            "test_evaluation": {
+                "moderate": test_eval_mod,
+                "high": test_eval_high,
+            },
+        }
+        with open(thresholds_save_path, "w") as f:
+            json.dump(thresholds_payload, f, indent=2)
 
         final_metrics_payload = {
             "model_version": MODEL_VERSION,

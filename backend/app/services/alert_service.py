@@ -20,6 +20,27 @@ class AlertService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    def check_and_expire_snoozes(self, patient_id: Optional[str] = None) -> int:
+        """Expire snoozed alerts whose snooze window has lapsed, reverting status to 'open'."""
+        now = datetime.now(timezone.utc)
+        stmt = select(Alert).where(
+            Alert.status == "snoozed",
+            Alert.snoozed_until.is_not(None),
+            Alert.snoozed_until <= now,
+        )
+        if patient_id:
+            stmt = stmt.where(Alert.patient_id == patient_id)
+
+        expired_alerts = list(self.db.execute(stmt).scalars().all())
+        for a in expired_alerts:
+            a.status = "open"
+            a.snoozed_until = None
+            logger.info(f"Snooze expired for alert {a.alert_id} (patient {a.patient_id}). Reverted status to open.")
+
+        if expired_alerts:
+            self.db.commit()
+        return len(expired_alerts)
+
     def evaluate_and_create_alert(
         self,
         patient_id: str,
@@ -29,18 +50,25 @@ class AlertService:
         if prediction.probability < settings.risk_threshold_high:
             return None
 
-        # Check for open alert within cooldown window
+        # Expire any lapsed snoozes first
+        self.check_and_expire_snoozes(patient_id)
+
+        # Check for alert within cooldown window
+        # Cooldown must consider acknowledged/snoozed alerts as well as open ones
         cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.alert_cooldown_hours)
         recent_alert = self.db.execute(
             select(Alert).where(
                 Alert.patient_id == patient_id,
                 Alert.created_at >= cooldown_cutoff,
-                Alert.status == "open",
+                Alert.status.in_(["open", "acknowledged", "snoozed"]),
             )
         ).scalars().first()
 
         if recent_alert:
-            logger.info(f"Suppressed duplicate alert for patient {patient_id} within {settings.alert_cooldown_hours}h cooldown.")
+            logger.info(
+                f"Suppressed duplicate alert for patient {patient_id} within {settings.alert_cooldown_hours}h cooldown "
+                f"(recent alert {recent_alert.alert_id} has status '{recent_alert.status}')."
+            )
             return None
 
         # Generate clinician-oriented alert message
@@ -70,7 +98,8 @@ class AlertService:
         return alert
 
     def get_patient_alerts(self, patient_id: str, limit: int = 50) -> List[Alert]:
-        """Fetch alert feed for patient."""
+        """Fetch alert feed for patient after expiring lapsed snoozes."""
+        self.check_and_expire_snoozes(patient_id)
         return list(self.db.execute(
             select(Alert)
             .where(Alert.patient_id == patient_id)
@@ -111,22 +140,30 @@ class AlertService:
         alert_id: str,
         clinician_name: str = "Dr. Clinician",
         snooze_hours: float = 4.0,
-        reason: str = "Awaiting post-prandial repeat cuff measurement",
+        reason: Optional[str] = None,
     ) -> Optional[Alert]:
         """Snooze alert with specific duration and documented rationale."""
         alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
         if not alert:
             return None
 
+        now = datetime.now(timezone.utc)
+        duration_minutes = int(snooze_hours * 60)
+        snoozed_until = now + timedelta(minutes=duration_minutes)
+
         alert.status = "snoozed"
         alert.acknowledged_by = clinician_name
-        alert.acknowledged_at = datetime.now(timezone.utc)
+        alert.acknowledged_at = now
+        alert.snooze_duration_minutes = duration_minutes
+        alert.snoozed_until = snoozed_until
+        alert.snooze_reason = reason
 
+        reason_str = f" Reason: {reason}" if reason else ""
         note = ClinicianNote(
             patient_id=alert.patient_id,
             alert_id=alert.alert_id,
-            note=f"[Alert Snoozed for {snooze_hours:.1f}h by {clinician_name}] Reason: {reason}",
-            created_at=datetime.now(timezone.utc),
+            note=f"[Alert Snoozed for {snooze_hours:.1f}h by {clinician_name}]{reason_str}",
+            created_at=now,
         )
         self.db.add(note)
 

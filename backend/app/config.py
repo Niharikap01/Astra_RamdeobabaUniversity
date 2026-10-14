@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Any
 from pydantic import Field, AliasChoices, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -93,6 +93,22 @@ class Settings(BaseSettings):
         if not path_obj.is_absolute():
             path_obj = (PROJECT_ROOT / path_obj).resolve()
         return str(path_obj)
+
+    def model_post_init(self, __context: Any) -> None:
+        """Load clinical decision thresholds from committed thresholds.json if present."""
+        artifacts_path = Path(self.ml_artifacts_dir)
+        thresholds_path = artifacts_path / "thresholds.json"
+        if thresholds_path.exists():
+            try:
+                import json
+                with open(thresholds_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if "RISK_THRESHOLD_MODERATE" not in os.environ and "risk_threshold_moderate" not in os.environ:
+                        self.risk_threshold_moderate = float(data.get("moderate", self.risk_threshold_moderate))
+                    if "RISK_THRESHOLD_HIGH" not in os.environ and "risk_threshold_high" not in os.environ:
+                        self.risk_threshold_high = float(data.get("high", self.risk_threshold_high))
+            except Exception:
+                pass
 
     @property
     def cors_origin_list(self) -> List[str]:

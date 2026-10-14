@@ -23,8 +23,8 @@ import { AlertResponse } from "../types";
 interface RightAlertDrawerProps {
   alerts: AlertResponse[];
   onAcknowledge: (alertId: string) => void;
-  onSnooze: (alertId: string, hours: number, reason: string) => void;
-  onFalsePositive: (alertId: string, reason: string) => void;
+  onSnooze: (alertId: string, hours: number, reason?: string) => void;
+  onFalsePositive: (alertId: string, reason?: string) => void;
   onRequestRecheck: () => void;
   onAddNote: () => void;
   isOpen: boolean;
@@ -62,12 +62,12 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
       onSnooze(
         selectedAlertForAction.alert_id,
         snoozeHours,
-        reasonText || "Awaiting post-prandial repeat cuff reading"
+        reasonText.trim() || undefined
       );
     } else if (actionType === "false_positive") {
       onFalsePositive(
         selectedAlertForAction.alert_id,
-        reasonText || "Transient sensor artifact or acute situational stress"
+        reasonText.trim() || undefined
       );
     }
 

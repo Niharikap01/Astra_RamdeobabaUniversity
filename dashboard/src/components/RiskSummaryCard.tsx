@@ -10,11 +10,13 @@ import { PredictionResponse } from "../types";
 interface RiskSummaryCardProps {
   prediction: PredictionResponse | null;
   recommendedActions: string[];
+  thresholds?: { moderate: number; high: number };
 }
 
 export const RiskSummaryCard: React.FC<RiskSummaryCardProps> = ({
   prediction,
   recommendedActions,
+  thresholds,
 }) => {
   if (!prediction) {
     return (
@@ -112,7 +114,9 @@ export const RiskSummaryCard: React.FC<RiskSummaryCardProps> = ({
           <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono pt-1">
             <span>Model v{prediction.model_version}</span>
             <span>•</span>
-            <span>Bands: Low &lt;35% | Mod 35-64% | High &ge;65%</span>
+            <span>
+              Bands: Low &lt;{Math.round((thresholds?.moderate ?? 0.34) * 100)}% | Mod {Math.round((thresholds?.moderate ?? 0.34) * 100)}-{Math.round((thresholds?.high ?? 0.47) * 100) - 1}% | High &ge;{Math.round((thresholds?.high ?? 0.47) * 100)}%
+            </span>
           </div>
         </div>
       </div>

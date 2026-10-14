@@ -15,6 +15,7 @@ interface RiskHorizonChartProps {
   theme: "dark" | "light";
   whatIfSimulatedRisk?: number | null;
   onSelectTimePoint?: (offset: number) => void;
+  thresholds?: { moderate: number; high: number };
 }
 
 export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
@@ -22,6 +23,7 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
   theme,
   whatIfSimulatedRisk,
   onSelectTimePoint,
+  thresholds,
 }) => {
   if (!horizon || !horizon.series || horizon.series.length === 0) {
     return (
@@ -270,16 +272,16 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
                   fontSize: 10,
                 },
               },
-              // High Risk Threshold (65%)
+              // High Risk Threshold
               {
-                yAxis: 65,
+                yAxis: Math.round((thresholds?.high ?? 0.47) * 100),
                 lineStyle: {
                   color: palette.riskHigh,
                   width: 1.2,
                   type: "dashed",
                 },
                 label: {
-                  formatter: "High Risk Threshold (65%)",
+                  formatter: `High Risk Threshold (${Math.round((thresholds?.high ?? 0.47) * 100)}%)`,
                   position: "insideEndTop",
                   color: palette.riskHigh,
                   fontSize: 10,

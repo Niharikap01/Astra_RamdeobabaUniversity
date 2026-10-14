@@ -6,6 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from backend.app.config import settings
 from backend.app.database import get_db
 from backend.app.schemas import (
     AlertAcknowledgeRequest,
@@ -13,6 +14,7 @@ from backend.app.schemas import (
     AlertSnoozeRequest,
     FalsePositiveRequest,
     PredictionResponse,
+    ThresholdsResponse,
     TopFactor,
 )
 from backend.app.services.alert_service import AlertService
@@ -20,6 +22,17 @@ from backend.app.services.ehr_service import EHRService
 from backend.app.services.prediction_service import PredictionService
 
 router = APIRouter(tags=["Predictions & Alerts"])
+
+
+@router.get("/api/thresholds", response_model=ThresholdsResponse)
+def get_operating_thresholds():
+    """Retrieve calibrated clinical decision operating thresholds (derived from validation set)."""
+    return ThresholdsResponse(
+        moderate=settings.risk_threshold_moderate,
+        high=settings.risk_threshold_high,
+        source="validation",
+        cooldown_hours=settings.alert_cooldown_hours,
+    )
 
 
 @router.get("/api/patients/{patient_id}/risk", response_model=PredictionResponse)

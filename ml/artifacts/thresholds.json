@@ -1,0 +1,35 @@
+{
+  "moderate": 0.34,
+  "high": 0.47,
+  "derived_from": "validation",
+  "validation_metrics": {
+    "val_high_tau": 0.47,
+    "val_high_fa_pw": 0.298,
+    "val_mod_tau": 0.34,
+    "val_mod_fa_pw": 0.631
+  },
+  "test_evaluation": {
+    "moderate": {
+      "threshold": 0.34,
+      "sensitivity": 0.6991,
+      "specificity": 0.7036,
+      "precision": 0.4248,
+      "false_alerts_per_patient_week": 1.58,
+      "tp": 525,
+      "fp": 711,
+      "tn": 1688,
+      "fn": 226
+    },
+    "high": {
+      "threshold": 0.47,
+      "sensitivity": 0.3675,
+      "specificity": 0.9166,
+      "precision": 0.5798,
+      "false_alerts_per_patient_week": 0.444,
+      "tp": 276,
+      "fp": 200,
+      "tn": 2199,
+      "fn": 475
+    }
+  }
+}

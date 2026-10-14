@@ -230,3 +230,116 @@ Unrelated generated files are kept ignored:
 #### NOT RUN / NOT VERIFIED (Phase 0)
 - End-to-end WebSocket telemetry streaming to dashboard (deferred to Phase 7).
 - Docker deployment (deferred to Phase 8).
+
+---
+
+## PHASE 1: Thresholds and Alerts That Fire (M2)
+
+### 1. Operating Thresholds Derivation (Validation Set Only)
+Operating thresholds derived strictly from `data/processed/val.parquet` via `ml/robustness.py derive_operating_thresholds`:
+- **Moderate Risk Threshold ($\tau_{\text{mod}}$):** `0.34` (validation false alert rate: 0.631 FA/patient-week, sensitivity: 96.5%)
+- **High Risk Threshold ($\tau_{\text{high}}$):** `0.47` (validation false alert rate: 0.298 FA/patient-week $\le$ 0.30 target)
+
+Persisted in committed file `ml/artifacts/thresholds.json`.
+
+#### Honest Test Split Evaluation (`data/processed/test.parquet`, 30 patients, 450 patient-weeks)
+- **High Threshold ($\tau = 0.47$):**
+  - Sensitivity: `36.75%` (276 TP / 751 total positives)
+  - Specificity: `91.66%` (2,199 TN / 2,399 total negatives)
+  - Precision: `57.98%` (276 TP / 476 total alerts)
+  - False Alerts Per Patient-Week: `0.444` (200 FP / 450 patient-weeks)
+- **Moderate Threshold ($\tau = 0.34$):**
+  - Sensitivity: `69.91%` (525 TP / 751 total positives)
+  - Specificity: `70.36%` (1,688 TN / 2,399 total negatives)
+  - Precision: `42.48%` (525 TP / 1,236 total alerts)
+  - False Alerts Per Patient-Week: `1.580` (711 FP / 450 patient-weeks)
+
+### 2. Alert Lifecycle & Cooldown Implementation
+- **Cooldown:** In `backend/app/services/alert_service.py`, cooldown now explicitly evaluates `Alert.status.in_(["open", "acknowledged", "snoozed"])`, ensuring acknowledged and snoozed alerts within the 24-hour window properly suppress duplicate firing.
+- **Snooze Expiry:** `Alert` model augmented with `snoozed_until`, `snooze_duration_minutes`, and `snooze_reason`. `check_and_expire_snoozes` reverts expired snoozes to `open`.
+- **No Prefilled Snooze Reason:** Fallback placeholder text removed in `backend/app/schemas.py`, `dashboard/src/services/api.ts`, and `dashboard/src/components/RightAlertDrawer.tsx`.
+- **Dynamic Threshold Integration:** `GET /api/thresholds` endpoint added; loaded into `backend/app/config.py` via `model_post_init` and consumed by dashboard components (`RiskSummaryCard`, `RiskHorizonChart`, `RightAlertDrawer`).
+
+### 3. Test Execution & Coverage
+**Command:**
+```powershell
+.\.venv_check\Scripts\pytest.exe backend/tests -v --cov=backend/app --cov-report=term-missing
+```
+**Raw Pytest Summary Output:**
+```
+backend/tests/test_alerts.py::test_alert_generation_at_threshold PASSED  [  4%]
+backend/tests/test_alerts.py::test_alert_cooldown_open_acknowledged_snoozed PASSED [  8%]
+backend/tests/test_alerts.py::test_snooze_duration_stored_and_expires PASSED [ 13%]
+backend/tests/test_alerts.py::test_alerts_fire_in_simulation_run PASSED  [ 17%]
+backend/tests/test_alerts.py::test_thresholds_endpoint PASSED            [ 21%]
+backend/tests/test_api.py::test_health_check PASSED                      [ 26%]
+backend/tests/test_api.py::test_health_check_db_failure PASSED           [ 30%]
+backend/tests/test_api.py::test_health_check_model_not_loaded PASSED     [ 34%]
+backend/tests/test_api.py::test_config_app_port_env PASSED               [ 39%]
+backend/tests/test_api.py::test_patients_endpoints PASSED                [ 43%]
+backend/tests/test_api.py::test_digital_twin_endpoints PASSED            [ 47%]
+backend/tests/test_api.py::test_risk_and_history_endpoints PASSED        [ 52%]
+backend/tests/test_api.py::test_whatif_endpoint PASSED                   [ 56%]
+backend/tests/test_api.py::test_sensor_ingestion_and_pipeline_trigger PASSED [ 60%]
+backend/tests/test_api.py::test_risk_horizon_and_why_risk_changed PASSED [ 65%]
+backend/tests/test_api.py::test_alert_lifecycle_and_notes PASSED         [ 69%]
+backend/tests/test_api.py::test_simulation_endpoints PASSED              [ 73%]
+backend/tests/test_api.py::test_websocket_stream PASSED                  [ 78%]
+backend/tests/test_fusion.py::test_zero_future_leakage_proof PASSED      [ 82%]
+backend/tests/test_fusion.py::test_fusion_service_integration PASSED     [ 86%]
+backend/tests/test_prediction.py::test_prediction_scoring PASSED         [ 91%]
+backend/tests/test_twin.py::test_twin_construction PASSED                [ 95%]
+backend/tests/test_whatif.py::test_whatif_counterfactual_simulation PASSED [100%]
+
+======================= 23 passed, 17 warnings in 3.21s =======================
+TOTAL Coverage: 84% (backend/app/services/alert_service.py: 97%)
+```
+**Elapsed Time:** 3.21 seconds (test execution)
+
+### 4. Frontend Verification
+**Command:**
+```powershell
+cd dashboard; npm run build; npx tsc --noEmit
+```
+**Raw Output:**
+```
+> react-example@0.0.0 build
+> vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 16 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.25 kB │ gzip:  0.58 kB
+dist/assets/index-CaHEg_y7.css   40.66 kB │ gzip:  7.82 kB
+dist/assets/index-BPfduECR.js   219.49 kB │ gzip: 68.57 kB
+✓ built in 192ms
+(exit code 0, no errors)
+```
+
+### 5. Git Diff Stat
+**Command:**
+```powershell
+git diff --stat
+```
+**Raw Output:**
+```
+ backend/app/config.py                         | 18 ++++++++-
+ backend/app/models.py                         |  5 ++-
+ backend/app/routers/predictions.py            | 13 +++++++
+ backend/app/schemas.py                        | 18 +++++++--
+ backend/app/services/alert_service.py         | 53 +++++++++++++++++++++++----
+ dashboard/src/components/RightAlertDrawer.tsx |  8 ++--
+ dashboard/src/components/RiskHorizonChart.tsx |  8 ++--
+ dashboard/src/components/RiskSummaryCard.tsx  |  6 ++-
+ dashboard/src/services/api.ts                 | 13 +++++--
+ dashboard/src/types/index.ts                  | 10 +++++
+ ml/train_lightgbm.py                          | 35 ++++++++++++++++++
+ 11 files changed, 161 insertions(+), 26 deletions(-)
+```
+
+### 6. NOT RUN / NOT VERIFIED (Phase 1)
+- Long-duration multi-day background simulation process running indefinitely (verified discrete multi-tick ingestion pipeline triggering alerts).
+- Headless browser verification of snooze modal UI (deferred to Phase 7).
+

@@ -170,6 +170,16 @@ export interface AlertResponse {
   status: "open" | "acknowledged" | "snoozed" | "false_positive";
   acknowledged_by?: string | null;
   acknowledged_at?: string | null;
+  snoozed_until?: string | null;
+  snooze_duration_minutes?: number | null;
+  snooze_reason?: string | null;
+}
+
+export interface OperatingThresholdsResponse {
+  moderate: number;
+  high: number;
+  source: string;
+  cooldown_hours: number;
 }
 
 export interface WhatIfRequest {

@@ -106,9 +106,12 @@ class AlertResponse(BaseModel):
     probability: float
     message: str
     created_at: datetime
-    status: str  # open, acknowledged, false_positive
+    status: str  # open, acknowledged, snoozed, false_positive
     acknowledged_by: Optional[str] = None
     acknowledged_at: Optional[datetime] = None
+    snoozed_until: Optional[datetime] = None
+    snooze_duration_minutes: Optional[int] = None
+    snooze_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -120,13 +123,20 @@ class AlertAcknowledgeRequest(BaseModel):
 
 class AlertSnoozeRequest(BaseModel):
     clinician_name: str = "Dr. Clinician"
-    snooze_hours: float = Field(default=4.0, ge=1.0, le=48.0)
-    reason: str = "Awaiting post-prandial repeat cuff measurement"
+    snooze_hours: float = Field(default=4.0, ge=0.5, le=72.0)
+    reason: Optional[str] = None
+
+
+class ThresholdsResponse(BaseModel):
+    moderate: float
+    high: float
+    source: str = "validation"
+    cooldown_hours: float = 24.0
 
 
 class FalsePositiveRequest(BaseModel):
     clinician_name: str = "Dr. Clinician"
-    reason: str = "Transient sensor anomaly or patient situational stress"
+    reason: Optional[str] = None
 
 
 class ClinicianNoteCreate(BaseModel):

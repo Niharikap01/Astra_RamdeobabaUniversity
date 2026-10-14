@@ -131,9 +131,12 @@ class Alert(Base):
     probability = Column(Float, nullable=False)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
-    status = Column(String(32), default="open")  # open, acknowledged, false_positive
+    status = Column(String(32), default="open")  # open, acknowledged, snoozed, false_positive
     acknowledged_by = Column(String(128), nullable=True)
     acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    snoozed_until = Column(DateTime(timezone=True), nullable=True, index=True)
+    snooze_duration_minutes = Column(Integer, nullable=True)
+    snooze_reason = Column(Text, nullable=True)
 
     patient = relationship("Patient", back_populates="alerts")
     prediction = relationship("Prediction", back_populates="alerts")
