@@ -75,20 +75,30 @@ class PredictionService:
             logger.error(f"Failed to load ML artifacts: {e}", exc_info=True)
             raise RuntimeError(f"Unable to initialize ML model artifacts: {e}")
 
-    def compute_confidence(
+    def compute_uncertainty_range(
         self,
         prob: float,
         coverage_pct: Optional[float] = None,
     ) -> Tuple[float, List[float]]:
-        """Compute coverage-aware confidence score and confidence interval."""
+        """Coverage-adjusted uncertainty range (heuristic).
+
+        NOT a statistical confidence interval. This is a deterministic
+        heuristic that widens the displayed uncertainty band when sensor
+        coverage is low. See docs/clinical_safety.md for the exact formula.
+
+        Returns:
+            (quality_score, [lower_bound, upper_bound])
+            quality_score: 0-1 heuristic data-quality indicator.
+            lower_bound / upper_bound: probability ± coverage-scaled margin.
+        """
         import math
         cov = coverage_pct if coverage_pct is not None else 100.0
         cov_ratio = max(0.1, min(1.0, cov / 100.0))
-        confidence_margin = round(min(0.25, 0.08 / math.sqrt(cov_ratio)), 4)
-        confidence_score = round(max(0.1, min(1.0, cov_ratio * (1.0 - 0.2 * abs(prob - 0.5)))), 3)
-        conf_lower = max(0.0, round(prob - confidence_margin, 4))
-        conf_upper = min(1.0, round(prob + confidence_margin, 4))
-        return confidence_score, [conf_lower, conf_upper]
+        margin = round(min(0.25, 0.08 / math.sqrt(cov_ratio)), 4)
+        quality_score = round(max(0.1, min(1.0, cov_ratio * (1.0 - 0.2 * abs(prob - 0.5)))), 3)
+        lower = max(0.0, round(prob - margin, 4))
+        upper = min(1.0, round(prob + margin, 4))
+        return quality_score, [lower, upper]
 
     def score_features(
         self,
@@ -142,7 +152,7 @@ class PredictionService:
                 )
 
         prob, risk_level, top_factors = self.score_features(features_dict)
-        conf_score, conf_interval = self.compute_confidence(prob, coverage_pct=overall_cov)
+        conf_score, conf_interval = self.compute_uncertainty_range(prob, coverage_pct=overall_cov)
 
         snapshot = dict(features_dict)
         snapshot["_data_coverage_pct"] = overall_cov

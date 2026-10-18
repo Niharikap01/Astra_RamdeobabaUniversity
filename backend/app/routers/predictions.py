@@ -68,8 +68,8 @@ def get_patient_risk(patient_id: str, db: Session = Depends(get_db)):
 
     snap = pred.feature_snapshot or {}
     pred_cov = snap.get("_data_coverage_pct", overall_cov)
-    conf_score = snap.get("_confidence_score", 0.95)
-    conf_interval = [
+    quality_score = snap.get("_confidence_score", 0.95)
+    uncertainty_range = [
         snap.get("_confidence_lower", max(0.0, round(pred.probability - 0.08, 4))),
         snap.get("_confidence_upper", min(1.0, round(pred.probability + 0.08, 4))),
     ]
@@ -96,8 +96,8 @@ def get_patient_risk(patient_id: str, db: Session = Depends(get_db)):
         top_factors=top_factors_data,
         feature_snapshot=pred.feature_snapshot or {},
         data_coverage=pred_cov,
-        confidence=conf_score,
-        confidence_interval=conf_interval,
+        uncertainty_quality=quality_score,
+        uncertainty_range_heuristic=uncertainty_range,
     )
 
 

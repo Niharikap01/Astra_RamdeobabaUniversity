@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier, early_stopping
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.frozen import FrozenEstimator
 
 from ml.data_preparation import DataPreparationPipeline
 from ml.evaluate import ModelEvaluator
@@ -103,6 +104,7 @@ class LightGBMTrainer:
         scale_pos_weight = float(num_neg / num_pos)
 
         # Strong regularization to combat patient-level cluster overfitting
+        # Deterministic: n_jobs=1, deterministic=True, fixed random_state
         base_model = LGBMClassifier(
             n_estimators=300,
             learning_rate=0.030,
@@ -115,7 +117,8 @@ class LightGBMTrainer:
             reg_lambda=2.00,
             scale_pos_weight=scale_pos_weight,
             random_state=seed,
-            n_jobs=-1,
+            n_jobs=1,
+            deterministic=True,
             verbosity=-1,
         )
 
@@ -128,7 +131,12 @@ class LightGBMTrainer:
 
         calibrator = None
         if calibrate:
-            calibrator = CalibratedClassifierCV(estimator=base_model, cv=None, method="isotonic")
+            # FrozenEstimator prevents CalibratedClassifierCV from cloning/refitting
+            # cv="prefit" uses the already-fitted model as-is for calibration
+            # This ensures the SHAP-explained model and the scored model are identical
+            calibrator = CalibratedClassifierCV(
+                estimator=FrozenEstimator(base_model), cv="prefit", method="isotonic"
+            )
             calibrator.fit(X_val, y_val)
 
         return base_model, calibrator, scale_pos_weight

@@ -95,8 +95,8 @@ class PredictionResponse(BaseModel):
     top_factors: List[TopFactor] = []
     feature_snapshot: Dict[str, float] = {}
     data_coverage: Optional[float] = None
-    confidence: Optional[float] = None
-    confidence_interval: Optional[List[float]] = None
+    uncertainty_quality: Optional[float] = Field(default=None, description="0-1 heuristic data-quality score (NOT a statistical confidence level)")
+    uncertainty_range_heuristic: Optional[List[float]] = Field(default=None, description="[lower, upper] coverage-adjusted uncertainty range (NOT a statistical CI)")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -171,8 +171,8 @@ class RiskHorizonPoint(BaseModel):
     hour_offset: int
     is_predicted: bool
     risk_pct: float
-    confidence_lower: float
-    confidence_upper: float
+    uncertainty_lower: float = Field(description="Lower bound of coverage-adjusted uncertainty range (heuristic, not a CI)")
+    uncertainty_upper: float = Field(description="Upper bound of coverage-adjusted uncertainty range (heuristic, not a CI)")
     is_sleep_window: bool
     sleep_stage: Optional[str] = None
     has_bp_reading: bool = False
