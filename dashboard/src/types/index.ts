@@ -262,3 +262,24 @@ export interface ReadingsSeriesResponse {
   baseline_30d: PersonalBaseline30d;
   series: DailyReadingItem[];
 }
+
+export interface FactorChangeItem {
+  feature: string;
+  display_name: string;
+  current_value: number;
+  previous_value: number;
+  impact_delta: number;
+  direction: "increased_risk" | "decreased_risk" | "neutral" | string;
+  clinical_explanation: string;
+}
+
+export interface WhyRiskChangedResponse {
+  patient_id: string;
+  current_risk_pct: number;
+  previous_risk_pct?: number | null;
+  risk_delta_pct?: number | null;
+  summary: string;
+  factors: FactorChangeItem[];
+  trust_statement: string;
+}
+

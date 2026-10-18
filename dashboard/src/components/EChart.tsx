@@ -1,10 +1,12 @@
 /**
  * Shared Themed EChart Wrapper
  * Automatically applies NightWatch dark navy tokens, typography, and tooltip styling.
+ * Supports echarts.connect grouping for multi-chart linked scrubbers.
  */
 
 import React, { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
+import * as echarts from "echarts";
 import { TOKENS } from "../styles/tokens";
 
 interface EChartProps {
@@ -13,6 +15,8 @@ interface EChartProps {
   className?: string;
   onEvents?: Record<string, (params: any) => void>;
   notMerge?: boolean;
+  group?: string;
+  onChartReady?: (instance: any) => void;
 }
 
 export const EChart: React.FC<EChartProps> = ({
@@ -21,6 +25,8 @@ export const EChart: React.FC<EChartProps> = ({
   className = "",
   onEvents,
   notMerge = true,
+  group,
+  onChartReady,
 }) => {
   const themedOption = useMemo(() => {
     const dark = TOKENS.colors.dark;
@@ -59,6 +65,16 @@ export const EChart: React.FC<EChartProps> = ({
     };
   }, [option]);
 
+  const handleChartReady = (instance: any) => {
+    if (group && instance) {
+      instance.group = group;
+      echarts.connect(group);
+    }
+    if (onChartReady) {
+      onChartReady(instance);
+    }
+  };
+
   return (
     <div className={`w-full relative ${className}`}>
       <ReactECharts
@@ -66,6 +82,7 @@ export const EChart: React.FC<EChartProps> = ({
         style={{ height: "100%", width: "100%", minHeight: "260px", ...style }}
         onEvents={onEvents}
         notMerge={notMerge}
+        onChartReady={handleChartReady}
         opts={{ renderer: "canvas" }}
       />
     </div>

@@ -1,7 +1,8 @@
 /**
  * NightWatch Dashboard — Clinical Decision Support Observatory
- * Tier 1: Three-zone layout, Risk Horizon trajectory, live WebSocket stream,
- * alert triage, and clinical safety guardrails.
+ * Tier 1 & Tier 2: Three-zone architecture, 24h Risk Horizon,
+ * Longitudinal BP trajectory, Circadian waves (Sleep/HRV/Resting HR),
+ * Twin state comparison, Factor attribution waterfall, and live telemetry stream.
  */
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
@@ -9,12 +10,18 @@ import {
   Activity,
   AlertOctagon,
   AlertTriangle,
+  BarChart3,
   CheckCircle2,
   Clock,
+  GitCommit,
+  Heart,
   Layers,
+  Moon,
   RefreshCw,
+  Shield,
   Sliders,
   Sparkles,
+  TrendingUp,
   Wifi,
   WifiOff,
 } from "lucide-react";
@@ -25,8 +32,10 @@ import {
   OperatingThresholdsResponse,
   PatientProfileDetail,
   PatientSummary,
+  ReadingsSeriesResponse,
   RiskHorizonResponse,
   SimulationStatusResponse,
+  WhyRiskChangedResponse,
 } from "./types";
 import { NavigationRail } from "./components/NavigationRail";
 import { PatientHeader } from "./components/PatientHeader";
@@ -34,6 +43,12 @@ import { RightAlertDrawer } from "./components/RightAlertDrawer";
 import { RiskHorizonChart } from "./components/RiskHorizonChart";
 import { RiskSummaryCard } from "./components/RiskSummaryCard";
 import { DataTableToggle } from "./components/DataTableToggle";
+import { BloodPressureTrendCard } from "./components/BloodPressureTrendCard";
+import { CircadianWavesCard } from "./components/CircadianWavesCard";
+import { TwinSummaryCard } from "./components/TwinSummaryCard";
+import { WhyRiskChangedCard } from "./components/WhyRiskChangedCard";
+
+type ActiveTabType = "overview" | "bp-trend" | "circadian" | "attribution";
 
 export default function App() {
   // Theme & Accessibility
@@ -52,6 +67,12 @@ export default function App() {
   const [thresholds, setThresholds] = useState<OperatingThresholdsResponse | null>(null);
   const [simulationStatus, setSimulationStatus] = useState<SimulationStatusResponse | null>(null);
 
+  // Tier 2 Analytics State
+  const [bpDays, setBpDays] = useState<number>(30);
+  const [readingsSeries, setReadingsSeries] = useState<ReadingsSeriesResponse | null>(null);
+  const [whyRiskChanged, setWhyRiskChanged] = useState<WhyRiskChangedResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTabType>("overview");
+
   // Connection & Lifecycle States
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isOffline, setIsOffline] = useState<boolean>(false);
@@ -64,7 +85,7 @@ export default function App() {
   // Ref for polling interval
   const pollingRef = useRef<any>(null);
 
-  // Time-ago formatting ticker
+  // Time-ago ticker
   useEffect(() => {
     const timer = setInterval(() => {
       const seconds = Math.floor((new Date().getTime() - lastUpdatedTime.getTime()) / 1000);
@@ -108,20 +129,24 @@ export default function App() {
 
   // Load Selected Patient Data
   const loadPatientData = useCallback(
-    async (patientId: string) => {
+    async (patientId: string, days = bpDays) => {
       if (!patientId) return;
       try {
-        const [profile, twinData, horizonData, alertsData] = await Promise.all([
+        const [profile, twinData, horizonData, alertsData, seriesData, whyData] = await Promise.all([
           api.getPatientProfile(patientId),
           api.getPatientTwin(patientId).catch(() => null),
           api.getRiskHorizon(patientId).catch(() => null),
           api.getPatientAlerts(patientId).catch(() => []),
+          api.getReadingsSeries(patientId, days).catch(() => null),
+          api.getWhyRiskChanged(patientId).catch(() => null),
         ]);
 
         setPatientProfile(profile);
         if (twinData) setTwin(twinData);
         if (horizonData) setRiskHorizon(horizonData);
         setAlerts(alertsData);
+        if (seriesData) setReadingsSeries(seriesData);
+        if (whyData) setWhyRiskChanged(whyData);
         setLastUpdatedTime(new Date());
         setIsOffline(false);
       } catch (err) {
@@ -129,7 +154,7 @@ export default function App() {
         setIsOffline(true);
       }
     },
-    []
+    [bpDays]
   );
 
   useEffect(() => {
@@ -137,6 +162,16 @@ export default function App() {
       loadPatientData(selectedPatientId);
     }
   }, [selectedPatientId, loadPatientData]);
+
+  // Reload readings series when bpDays changes
+  const handleDaysChange = (newDays: number) => {
+    setBpDays(newDays);
+    if (selectedPatientId) {
+      api.getReadingsSeries(selectedPatientId, newDays)
+        .then(setReadingsSeries)
+        .catch((e) => console.warn("Failed to load readings series:", e));
+    }
+  };
 
   // WebSocket Live Stream with 5s Polling Fallback
   useEffect(() => {
@@ -150,9 +185,9 @@ export default function App() {
         (updatedTwin) => {
           setTwin(updatedTwin);
           setLastUpdatedTime(new Date());
-          // Refresh horizon and alerts concurrently
           api.getRiskHorizon(selectedPatientId).then(setRiskHorizon).catch(() => {});
           api.getPatientAlerts(selectedPatientId).then(setAlerts).catch(() => {});
+          api.getWhyRiskChanged(selectedPatientId).then(setWhyRiskChanged).catch(() => {});
         },
         (connected) => {
           setWsConnected(connected);
@@ -172,6 +207,7 @@ export default function App() {
         }).catch(() => {});
         api.getRiskHorizon(selectedPatientId).then(setRiskHorizon).catch(() => {});
         api.getPatientAlerts(selectedPatientId).then(setAlerts).catch(() => {});
+        api.getWhyRiskChanged(selectedPatientId).then(setWhyRiskChanged).catch(() => {});
       }
     }, 5000);
 
@@ -227,7 +263,7 @@ export default function App() {
     }
   };
 
-  // Risk Horizon Table Columns for CSV / Tabular View
+  // Horizon Table Columns for CSV
   const horizonColumns = [
     { key: "timestamp", label: "Time (IST)", format: (val: string) => new Date(val).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
     { key: "hour_offset", label: "Hour Offset", format: (v: number) => (v === 0 ? "0 [NOW]" : v > 0 ? `+${v}h` : `${v}h`) },
@@ -306,7 +342,7 @@ export default function App() {
               twin={twin}
               onRequestRecheck={() => api.requestBpRecheck(selectedPatientId)}
               onAddNote={() => {}}
-              onOpenWhatIf={() => {}}
+              onOpenWhatIf={() => setActiveTab("attribution")}
               onToggleTableView={() => setIsTableView(!isTableView)}
               isTableView={isTableView}
             />
@@ -343,6 +379,61 @@ export default function App() {
             </div>
           )}
 
+          {/* Modular Clinical Workspace Tabs */}
+          {selectedPatientId && !isLoading && (
+            <div className="px-4 md:px-6 pt-4 border-b border-slate-800/80 bg-slate-950/20">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                <button
+                  onClick={() => setActiveTab("overview")}
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                    activeTab === "overview"
+                      ? "border-purple-500 text-purple-300 bg-purple-950/20"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5 text-purple-400" />
+                  Overview & Risk Horizon
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("bp-trend")}
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                    activeTab === "bp-trend"
+                      ? "border-purple-500 text-purple-300 bg-purple-950/20"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
+                  Longitudinal BP Trend ({bpDays}d)
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("circadian")}
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                    activeTab === "circadian"
+                      ? "border-purple-500 text-purple-300 bg-purple-950/20"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <Moon className="w-3.5 h-3.5 text-sky-400" />
+                  Circadian Waves (Sleep / HRV / HR)
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("attribution")}
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                    activeTab === "attribution"
+                      ? "border-purple-500 text-purple-300 bg-purple-950/20"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <GitCommit className="w-3.5 h-3.5 text-purple-400" />
+                  Why Risk Changed
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Content Body */}
           <div className="p-4 md:p-6 space-y-6 flex-1">
             {isLoading ? (
@@ -359,28 +450,89 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* Executive Risk Dial Card */}
+                {/* Executive Risk Dial Card (Always visible at top of workspace) */}
                 <RiskSummaryCard
                   prediction={twin?.prediction || null}
                   recommendedActions={twin?.recommended_actions || []}
                   thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
                 />
 
-                {/* Signature Risk Horizon Chart with Table/CSV Toggle */}
-                <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
-                  <DataTableToggle
-                    rows={riskHorizon?.series || []}
-                    cols={horizonColumns}
-                    title="24-Hour Synchronized Risk Horizon Trajectory"
-                    filename={`nightwatch_risk_horizon_${selectedPatientId}.csv`}
-                  >
-                    <RiskHorizonChart
-                      horizon={riskHorizon}
-                      theme={theme}
-                      thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
+                {/* Tab 1: Overview & 24h Horizon & Baseline Comparison */}
+                {activeTab === "overview" && (
+                  <div className="space-y-6">
+                    {/* Signature Risk Horizon Chart with Table/CSV Toggle */}
+                    <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
+                      <DataTableToggle
+                        rows={riskHorizon?.series || []}
+                        cols={horizonColumns}
+                        title="24-Hour Synchronized Risk Horizon Trajectory"
+                        filename={`nightwatch_risk_horizon_${selectedPatientId}.csv`}
+                      >
+                        <RiskHorizonChart
+                          horizon={riskHorizon}
+                          theme={theme}
+                          thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
+                        />
+                      </DataTableToggle>
+                    </div>
+
+                    {/* Twin State Physiological Baseline Delta Card */}
+                    <TwinSummaryCard
+                      dynamicState={twin?.patient?.dynamic_state}
+                      baseline={readingsSeries?.baseline_30d || {}}
+                      patientId={selectedPatientId}
                     />
-                  </DataTableToggle>
-                </div>
+                  </div>
+                )}
+
+                {/* Tab 2: Longitudinal BP Trend */}
+                {activeTab === "bp-trend" && (
+                  <div className="space-y-6">
+                    <BloodPressureTrendCard
+                      series={readingsSeries?.series || []}
+                      baseline={readingsSeries?.baseline_30d || {}}
+                      patientId={selectedPatientId}
+                      selectedDays={bpDays}
+                      onDaysChange={handleDaysChange}
+                      isLoading={isLoading}
+                    />
+
+                    {/* Associated Twin Summary */}
+                    <TwinSummaryCard
+                      dynamicState={twin?.patient?.dynamic_state}
+                      baseline={readingsSeries?.baseline_30d || {}}
+                      patientId={selectedPatientId}
+                    />
+                  </div>
+                )}
+
+                {/* Tab 3: Circadian Waves */}
+                {activeTab === "circadian" && (
+                  <div className="space-y-6">
+                    <CircadianWavesCard
+                      series={readingsSeries?.series || []}
+                      baseline={readingsSeries?.baseline_30d || {}}
+                      patientId={selectedPatientId}
+                    />
+                  </div>
+                )}
+
+                {/* Tab 4: Factor Attribution Waterfall */}
+                {activeTab === "attribution" && (
+                  <div className="space-y-6">
+                    <WhyRiskChangedCard
+                      data={whyRiskChanged}
+                      patientId={selectedPatientId}
+                    />
+
+                    {/* Complementary Physiological Delta */}
+                    <TwinSummaryCard
+                      dynamicState={twin?.patient?.dynamic_state}
+                      baseline={readingsSeries?.baseline_30d || {}}
+                      patientId={selectedPatientId}
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>
