@@ -267,14 +267,14 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
         <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
           <button
             onClick={onRequestRecheck}
-            className="w-full py-2 px-3 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/70 border border-indigo-700/60 text-indigo-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+            className="w-full py-2 px-3 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/70 border border-indigo-700/60 text-indigo-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
           >
             <Clock className="w-3.5 h-3.5" />
             Order Home BP Cuff Recheck
           </button>
           <button
-            onClick={onAddNote}
-            className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+            onClick={() => setActionType("note" as any)}
+            className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
           >
             <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
             Document Clinical Note
@@ -282,12 +282,16 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
         </div>
       </aside>
 
-      {/* Snooze / False Positive Modal Dialog */}
-      {selectedAlertForAction && (
+      {/* Snooze / False Positive / Note Modal Dialog */}
+      {(selectedAlertForAction || actionType === ("note" as any)) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl">
             <h4 className="font-serif text-base font-semibold text-white">
-              {actionType === "snooze" ? "Snooze Clinical Alert" : "Mark Alert as False Positive"}
+              {actionType === "snooze"
+                ? "Snooze Clinical Alert"
+                : actionType === ("note" as any)
+                ? "Document Clinical Decision Note"
+                : "Mark Alert as False Positive"}
             </h4>
             <p className="text-xs text-slate-400 mt-1">
               Documenting clinical rationale for decision-support audit logging.
@@ -301,7 +305,7 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                 <select
                   value={snoozeHours}
                   onChange={(e) => setSnoozeHours(Number(e.target.value))}
-                  className="w-full p-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200"
+                  className="w-full p-2 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 focus-visible:ring-2 focus-visible:ring-purple-400"
                 >
                   <option value={2}>2 Hours (Post-prandial wait)</option>
                   <option value={4}>4 Hours (Standard morning window)</option>
@@ -313,19 +317,32 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
 
             <div className="mt-3">
               <label className="text-xs font-medium text-slate-300 block mb-1">
-                Documented Clinical Reason:
+                {actionType === "snooze" ? (
+                  <span className="text-rose-400">* Documented Clinical Reason (Mandatory):</span>
+                ) : actionType === ("note" as any) ? (
+                  <span>Clinical Observation Note:</span>
+                ) : (
+                  <span>Audit Explanation:</span>
+                )}
               </label>
               <textarea
                 value={reasonText}
                 onChange={(e) => setReasonText(e.target.value)}
                 placeholder={
                   actionType === "snooze"
-                    ? "e.g., Patient instructed to rest seated; awaiting repeat measurement..."
+                    ? "Required: e.g., Patient instructed to rest seated; awaiting repeat measurement..."
+                    : actionType === ("note" as any)
+                    ? "Enter physician note regarding patient hypertension status or protocol..."
                     : "e.g., Patient reported transient dental pain / white-coat anxiety..."
                 }
                 rows={3}
-                className="w-full p-2.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                className="w-full p-2.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-400"
               />
+              {actionType === "snooze" && !reasonText.trim() && (
+                <span className="text-[11px] text-rose-400 mt-1 block">
+                  A clinical reason must be provided before snoozing this alert.
+                </span>
+              )}
             </div>
 
             <div className="mt-4 flex items-center justify-end gap-2">
@@ -333,16 +350,30 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                 onClick={() => {
                   setSelectedAlertForAction(null);
                   setActionType(null);
+                  setReasonText("");
                 }}
-                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-purple-400"
               >
                 Cancel
               </button>
               <button
-                onClick={handleConfirmAction}
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium"
+                disabled={actionType === "snooze" && !reasonText.trim()}
+                onClick={() => {
+                  if (actionType === ("note" as any)) {
+                    onAddNote();
+                    setActionType(null);
+                    setReasonText("");
+                  } else {
+                    handleConfirmAction();
+                  }
+                }}
+                className={`px-4 py-1.5 rounded-lg text-white text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-purple-400 ${
+                  actionType === "snooze" && !reasonText.trim()
+                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                    : "bg-purple-600 hover:bg-purple-500"
+                }`}
               >
-                Confirm Log
+                {actionType === ("note" as any) ? "Save Clinical Note" : "Confirm Log"}
               </button>
             </div>
           </div>

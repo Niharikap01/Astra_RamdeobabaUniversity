@@ -1,8 +1,12 @@
 /**
  * NightWatch Dashboard — Clinical Decision Support Observatory
- * Tier 1 & Tier 2: Three-zone architecture, 24h Risk Horizon,
+ * Tier 1, Tier 2, & Tier 3 Complete:
+ * Three-zone architecture, 24h Risk Horizon with ghosted What-If trajectory,
+ * Counterfactual What-If Simulator with presets & saved scenarios,
+ * 6-Axis Sleep & Autonomic Fingerprint radar with automated interpretation,
  * Longitudinal BP trajectory, Circadian waves (Sleep/HRV/Resting HR),
  * Twin state comparison, Factor attribution waterfall, and live telemetry stream.
+ * Accessible with visible focus, reduced-motion controls, and Nocturne Dark theme.
  */
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
@@ -17,6 +21,7 @@ import {
   Heart,
   Layers,
   Moon,
+  Radar,
   RefreshCw,
   Shield,
   Sliders,
@@ -35,6 +40,7 @@ import {
   ReadingsSeriesResponse,
   RiskHorizonResponse,
   SimulationStatusResponse,
+  SleepFingerprintData,
   WhyRiskChangedResponse,
 } from "./types";
 import { NavigationRail } from "./components/NavigationRail";
@@ -47,12 +53,14 @@ import { BloodPressureTrendCard } from "./components/BloodPressureTrendCard";
 import { CircadianWavesCard } from "./components/CircadianWavesCard";
 import { TwinSummaryCard } from "./components/TwinSummaryCard";
 import { WhyRiskChangedCard } from "./components/WhyRiskChangedCard";
+import { SleepFingerprintCard } from "./components/SleepFingerprintCard";
+import { WhatIfSimulatorCard } from "./components/WhatIfSimulatorCard";
 
-type ActiveTabType = "overview" | "bp-trend" | "circadian" | "attribution";
+type ActiveTabType = "overview" | "what-if" | "fingerprint" | "bp-trend" | "circadian" | "attribution";
 
 export default function App() {
-  // Theme & Accessibility
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  // Theme & Accessibility (Dark theme only per specification)
+  const theme: "dark" = "dark";
   const [reducedMotion, setReducedMotion] = useState<boolean>(false);
 
   // Cohort & Selection
@@ -67,10 +75,12 @@ export default function App() {
   const [thresholds, setThresholds] = useState<OperatingThresholdsResponse | null>(null);
   const [simulationStatus, setSimulationStatus] = useState<SimulationStatusResponse | null>(null);
 
-  // Tier 2 Analytics State
+  // Analytics & Tier 3 State
   const [bpDays, setBpDays] = useState<number>(30);
   const [readingsSeries, setReadingsSeries] = useState<ReadingsSeriesResponse | null>(null);
   const [whyRiskChanged, setWhyRiskChanged] = useState<WhyRiskChangedResponse | null>(null);
+  const [sleepFingerprint, setSleepFingerprint] = useState<SleepFingerprintData | null>(null);
+  const [whatIfSimulatedRisk, setWhatIfSimulatedRisk] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTabType>("overview");
 
   // Connection & Lifecycle States
@@ -132,13 +142,14 @@ export default function App() {
     async (patientId: string, days = bpDays) => {
       if (!patientId) return;
       try {
-        const [profile, twinData, horizonData, alertsData, seriesData, whyData] = await Promise.all([
+        const [profile, twinData, horizonData, alertsData, seriesData, whyData, fingerprintData] = await Promise.all([
           api.getPatientProfile(patientId),
           api.getPatientTwin(patientId).catch(() => null),
           api.getRiskHorizon(patientId).catch(() => null),
           api.getPatientAlerts(patientId).catch(() => []),
           api.getReadingsSeries(patientId, days).catch(() => null),
           api.getWhyRiskChanged(patientId).catch(() => null),
+          api.getSleepFingerprint(patientId).catch(() => null),
         ]);
 
         setPatientProfile(profile);
@@ -147,6 +158,7 @@ export default function App() {
         setAlerts(alertsData);
         if (seriesData) setReadingsSeries(seriesData);
         if (whyData) setWhyRiskChanged(whyData);
+        if (fingerprintData) setSleepFingerprint(fingerprintData);
         setLastUpdatedTime(new Date());
         setIsOffline(false);
       } catch (err) {
@@ -188,6 +200,7 @@ export default function App() {
           api.getRiskHorizon(selectedPatientId).then(setRiskHorizon).catch(() => {});
           api.getPatientAlerts(selectedPatientId).then(setAlerts).catch(() => {});
           api.getWhyRiskChanged(selectedPatientId).then(setWhyRiskChanged).catch(() => {});
+          api.getSleepFingerprint(selectedPatientId).then(setSleepFingerprint).catch(() => {});
         },
         (connected) => {
           setWsConnected(connected);
@@ -208,6 +221,7 @@ export default function App() {
         api.getRiskHorizon(selectedPatientId).then(setRiskHorizon).catch(() => {});
         api.getPatientAlerts(selectedPatientId).then(setAlerts).catch(() => {});
         api.getWhyRiskChanged(selectedPatientId).then(setWhyRiskChanged).catch(() => {});
+        api.getSleepFingerprint(selectedPatientId).then(setSleepFingerprint).catch(() => {});
       }
     }, 5000);
 
@@ -280,7 +294,11 @@ export default function App() {
   const isCoverageWithheld = dataCoverage < 50;
 
   return (
-    <div className={`min-h-screen bg-[#0b0f19] text-slate-100 font-sans flex flex-col ${theme === "light" ? "theme-light" : ""}`}>
+    <div
+      className={`min-h-screen bg-[#0b0f19] text-slate-100 font-sans flex flex-col ${
+        reducedMotion ? "motion-reduce:transition-none motion-reduce:animate-none reduced-motion" : ""
+      }`}
+    >
       {/* Top Telemetry Status Bar */}
       <div className="h-8 bg-slate-950/80 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs text-slate-400">
         <div className="flex items-center gap-3">
@@ -327,7 +345,7 @@ export default function App() {
           onToggleSimulation={handleToggleSimulation}
           onOpenSimulationModal={() => {}}
           theme={theme}
-          onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onToggleTheme={() => {}}
           reducedMotion={reducedMotion}
           onToggleReducedMotion={() => setReducedMotion(!reducedMotion)}
           wsConnected={wsConnected}
@@ -342,7 +360,7 @@ export default function App() {
               twin={twin}
               onRequestRecheck={() => api.requestBpRecheck(selectedPatientId)}
               onAddNote={() => {}}
-              onOpenWhatIf={() => setActiveTab("attribution")}
+              onOpenWhatIf={() => setActiveTab("what-if")}
               onToggleTableView={() => setIsTableView(!isTableView)}
               isTableView={isTableView}
             />
@@ -357,7 +375,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => loadPatientData(selectedPatientId)}
-                className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 border border-rose-700/60 font-medium flex items-center gap-1.5 transition-colors"
+                className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 border border-rose-700/60 font-medium flex items-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
               >
                 <RefreshCw className="w-3 h-3" />
                 Retry
@@ -379,49 +397,92 @@ export default function App() {
             </div>
           )}
 
-          {/* Modular Clinical Workspace Tabs */}
+          {/* Modular Clinical Workspace Tabs with Accessible Keyboard Navigation */}
           {selectedPatientId && !isLoading && (
             <div className="px-4 md:px-6 pt-4 border-b border-slate-800/80 bg-slate-950/20">
-              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <div
+                role="tablist"
+                aria-label="Clinical Decision Observatory Tabs"
+                className="flex items-center gap-2 overflow-x-auto no-scrollbar"
+              >
                 <button
+                  role="tab"
+                  aria-selected={activeTab === "overview"}
                   onClick={() => setActiveTab("overview")}
-                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none ${
                     activeTab === "overview"
                       ? "border-purple-500 text-purple-300 bg-purple-950/20"
                       : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
                   }`}
                 >
                   <Activity className="w-3.5 h-3.5 text-purple-400" />
-                  Overview & Risk Horizon
+                  Risk Horizon & Twin
                 </button>
 
                 <button
+                  role="tab"
+                  aria-selected={activeTab === "what-if"}
+                  onClick={() => setActiveTab("what-if")}
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none ${
+                    activeTab === "what-if"
+                      ? "border-purple-500 text-purple-300 bg-purple-950/20"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                  What-If Simulator
+                  {whatIfSimulatedRisk != null && (
+                    <span className="w-2 h-2 rounded-full bg-pink-400 animate-ping" />
+                  )}
+                </button>
+
+                <button
+                  role="tab"
+                  aria-selected={activeTab === "fingerprint"}
+                  onClick={() => setActiveTab("fingerprint")}
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none ${
+                    activeTab === "fingerprint"
+                      ? "border-purple-500 text-purple-300 bg-purple-950/20"
+                      : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
+                  }`}
+                >
+                  <Moon className="w-3.5 h-3.5 text-sky-400" />
+                  Sleep Fingerprint (6-Axis)
+                </button>
+
+                <button
+                  role="tab"
+                  aria-selected={activeTab === "bp-trend"}
                   onClick={() => setActiveTab("bp-trend")}
-                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none ${
                     activeTab === "bp-trend"
                       ? "border-purple-500 text-purple-300 bg-purple-950/20"
                       : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
                   }`}
                 >
                   <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
-                  Longitudinal BP Trend ({bpDays}d)
+                  BP Trend ({bpDays}d)
                 </button>
 
                 <button
+                  role="tab"
+                  aria-selected={activeTab === "circadian"}
                   onClick={() => setActiveTab("circadian")}
-                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none ${
                     activeTab === "circadian"
                       ? "border-purple-500 text-purple-300 bg-purple-950/20"
                       : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
                   }`}
                 >
-                  <Moon className="w-3.5 h-3.5 text-sky-400" />
-                  Circadian Waves (Sleep / HRV / HR)
+                  <Heart className="w-3.5 h-3.5 text-rose-400" />
+                  Circadian Waves (Sleep / HRV)
                 </button>
 
                 <button
+                  role="tab"
+                  aria-selected={activeTab === "attribution"}
                   onClick={() => setActiveTab("attribution")}
-                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none ${
                     activeTab === "attribution"
                       ? "border-purple-500 text-purple-300 bg-purple-950/20"
                       : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40"
@@ -460,7 +521,7 @@ export default function App() {
                 {/* Tab 1: Overview & 24h Horizon & Baseline Comparison */}
                 {activeTab === "overview" && (
                   <div className="space-y-6">
-                    {/* Signature Risk Horizon Chart with Table/CSV Toggle */}
+                    {/* Signature Risk Horizon Chart with Ghosted Simulated Curve */}
                     <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
                       <DataTableToggle
                         rows={riskHorizon?.series || []}
@@ -471,6 +532,7 @@ export default function App() {
                         <RiskHorizonChart
                           horizon={riskHorizon}
                           theme={theme}
+                          whatIfSimulatedRisk={whatIfSimulatedRisk}
                           thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
                         />
                       </DataTableToggle>
@@ -485,7 +547,52 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tab 2: Longitudinal BP Trend */}
+                {/* Tab 2: What-If Counterfactual Simulator */}
+                {activeTab === "what-if" && (
+                  <div className="space-y-6">
+                    <WhatIfSimulatorCard
+                      patientId={selectedPatientId}
+                      currentRiskPct={twin?.prediction?.probability ? Math.round(twin.prediction.probability * 100) : 35}
+                      onSimulatedRiskChange={setWhatIfSimulatedRisk}
+                    />
+
+                    {/* Associated Risk Horizon with Ghosted Simulated Curve */}
+                    <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
+                      <DataTableToggle
+                        rows={riskHorizon?.series || []}
+                        cols={horizonColumns}
+                        title="Risk Horizon: Ghosted Simulation Overlay"
+                        filename={`nightwatch_risk_horizon_simulated_${selectedPatientId}.csv`}
+                      >
+                        <RiskHorizonChart
+                          horizon={riskHorizon}
+                          theme={theme}
+                          whatIfSimulatedRisk={whatIfSimulatedRisk}
+                          thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
+                        />
+                      </DataTableToggle>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tab 3: Sleep Fingerprint (6-Axis Radar) */}
+                {activeTab === "fingerprint" && (
+                  <div className="space-y-6">
+                    <SleepFingerprintCard
+                      data={sleepFingerprint}
+                      patientId={selectedPatientId}
+                    />
+
+                    {/* Twin Summary Context */}
+                    <TwinSummaryCard
+                      dynamicState={twin?.patient?.dynamic_state}
+                      baseline={readingsSeries?.baseline_30d || {}}
+                      patientId={selectedPatientId}
+                    />
+                  </div>
+                )}
+
+                {/* Tab 4: Longitudinal BP Trend */}
                 {activeTab === "bp-trend" && (
                   <div className="space-y-6">
                     <BloodPressureTrendCard
@@ -506,7 +613,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tab 3: Circadian Waves */}
+                {/* Tab 5: Circadian Waves */}
                 {activeTab === "circadian" && (
                   <div className="space-y-6">
                     <CircadianWavesCard
@@ -517,7 +624,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Tab 4: Factor Attribution Waterfall */}
+                {/* Tab 6: Factor Attribution Waterfall */}
                 {activeTab === "attribution" && (
                   <div className="space-y-6">
                     <WhyRiskChangedCard
