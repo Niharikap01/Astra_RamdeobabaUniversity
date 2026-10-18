@@ -204,7 +204,9 @@ export interface WhatIfResponse {
   delta: number;
   baseline_risk_level: string;
   new_risk_level: string;
+  new_band?: string;
   changed_features: Record<string, any>;
+  effect_note?: string;
   disclaimer: string;
 }
 
@@ -215,6 +217,7 @@ export interface SimulationStatusResponse {
   current_simulated_date?: string | null;
   active_scenario?: string | null;
   ticks_completed: number;
+  last_tick_duration_seconds?: number | null;
 }
 
 export interface SensorReadingItem {
@@ -226,4 +229,36 @@ export interface SensorReadingItem {
   recorded_at: string;
   ingested_at: string;
   source: string;
+}
+
+export interface DailyReadingItem {
+  date: string;
+  timestamp: string;
+  sbp?: number | null;
+  dbp?: number | null;
+  sleep_duration?: number | null;
+  sleep_efficiency?: number | null;
+  hrv_rmssd?: number | null;
+  resting_hr?: number | null;
+  steps?: number | null;
+  medication_taken?: number | null;
+}
+
+export interface PersonalBaseline30d {
+  sbp?: number | null;
+  dbp?: number | null;
+  sleep_duration?: number | null;
+  sleep_efficiency?: number | null;
+  hrv_rmssd?: number | null;
+  resting_hr?: number | null;
+  steps?: number | null;
+  medication_adherence?: number | null;
+}
+
+export interface ReadingsSeriesResponse {
+  patient_id: string;
+  days: number;
+  timezone: string;
+  baseline_30d: PersonalBaseline30d;
+  series: DailyReadingItem[];
 }

@@ -139,8 +139,11 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {filteredPatients.map((patient) => {
           const isSelected = patient.patient_id === selectedPatientId;
+          const isNoPrediction = patient.latest_risk_level == null;
           const riskColor =
-            patient.latest_risk_level === "High"
+            isNoPrediction
+              ? "text-slate-400 border-slate-700/60 bg-slate-800/40"
+              : patient.latest_risk_level === "High"
               ? "text-rose-400 border-rose-500/40 bg-rose-950/20"
               : patient.latest_risk_level === "Moderate"
               ? "text-amber-400 border-amber-500/40 bg-amber-950/20"
@@ -181,8 +184,15 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
               {isExpanded && (
                 <div className="flex flex-col items-end flex-shrink-0 ml-1">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono font-medium ${riskColor}`}>
-                    {patient.latest_probability != null ? `${Math.round(patient.latest_probability * 100)}%` : "--"}
+                    {patient.latest_probability != null
+                      ? `${Math.round(patient.latest_probability * 100)}%`
+                      : "no prediction"}
                   </span>
+                  {patient.data_coverage_pct != null && (
+                    <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+                      {Math.round(patient.data_coverage_pct)}% cov
+                    </span>
+                  )}
                 </div>
               )}
             </button>

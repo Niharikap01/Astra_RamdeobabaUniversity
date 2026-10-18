@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo } from "react";
-import ReactECharts from "echarts-for-react";
+import { EChart } from "./EChart";
 import { AlertCircle, Clock, Pill, ShieldAlert, Sparkles } from "lucide-react";
 import { RiskHorizonResponse } from "../types";
 import { TOKENS } from "../styles/tokens";
@@ -393,10 +393,9 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
 
       {/* Main ECharts Canvas */}
       <div className="w-full h-80">
-        <ReactECharts
+        <EChart
           option={option}
           style={{ height: "100%", width: "100%" }}
-          opts={{ renderer: "canvas" }}
           notMerge={true}
         />
       </div>

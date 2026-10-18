@@ -71,6 +71,9 @@ export const api = {
     return fetchJson<SensorReadingItem[]>(`/api/patients/${id}/sensor-readings${query}`);
   },
 
+  getReadingsSeries: (id: string, days = 30) =>
+    fetchJson<import("../types").ReadingsSeriesResponse>(`/api/patients/${id}/readings-series?days=${days}`),
+
   postSensorReading: (id: string, reading: { sensor_type: string; value: number; unit: string; recorded_at: string; source?: string }) =>
     fetchJson<SensorReadingItem>(`/api/patients/${id}/sensor-readings`, {
       method: "POST",
