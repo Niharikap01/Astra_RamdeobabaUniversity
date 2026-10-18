@@ -2,42 +2,28 @@
 
 ## Model Details
 - **Developer:** NightWatch Clinical Intelligence Team
-- **Model Date:** October 2026
 - **Model Version:** 1.1.0
-- **Model Architecture:** Regularized LightGBM Gradient Boosted Decision Trees with Post-Hoc Isotonic Probability Calibration (`CalibratedClassifierCV`)
-- **License:** Research Prototype / Decision Support
-- **Primary Inputs:** Multimodal longitudinal telemetry:
-  1. Static EHR demographics, comorbidities, and baseline medications ($d=24$)
-  2. Ground-truth home BP cuff rolling metrics and trajectory slopes ($d=11$)
-  3. Continuous wearable sleep architecture and autonomic tone (RMSSD HRV, resting HR) ($d=18$)
-  4. Pedometer physical activity and smart pillbox adherence records ($d=8$)
+- **Architecture:** Regularized LightGBM with Isotonic Probability Calibration (`CalibratedClassifierCV`)
+- **Evaluation Protocol:** 5-Fold GroupKFold over 200 patients (pooled out-of-fold predictions)
+- **Primary Inputs:** Multimodal physiological features ($d=65$):
+  1. Static EHR demographics, ICD-10 comorbidities, baseline labs ($d=24$)
+  2. Ground-truth home BP cuff longitudinal rolling statistics ($d=11$)
+  3. Wearable sleep architecture and autonomic tone (RMSSD HRV, resting HR) ($d=18$)
+  4. Physical activity and smart pillbox adherence tracking ($d=8$)
   5. 30-day personal baseline deviation contrasts ($d=4$)
-- **Total Feature Dimension:** 65 continuous and normalized numeric features
 
 ---
 
-## Intended Use & Clinical Deployment
-- **Intended Purpose:** 24-hour lookahead decision support for remote patient monitoring (RPM) clinician dashboards. Identifies ambulatory patients at impending risk of acute hypertensive excursions (next-day SBP $\ge 140$ mmHg or DBP $\ge 90$ mmHg).
-- **Clinical Decision Window:** 11 to 24 hours of actionable clinician lead time prior to daytime hemodynamic surges.
-- **Out of Scope Uses:**
-  - Autonomous titration or prescription of antihypertensive drugs without clinician oversight.
-  - Diagnosis of primary or secondary hypertension.
-  - Replacement for certified ambulatory blood pressure monitoring (ABPM) or in-clinic sphygmomanometry.
+## Clinical Operating Thresholds (Validation-Derived)
+- **Moderate Risk Threshold:** $\tau = 0.34$ (Sensitivity: 98.5%, Precision: 31.8%, FA: 3.53/pt-wk)
+- **High Risk Threshold:** $\tau = 0.47$ (Sensitivity: 86.3%, Precision: 38.6%, FA: 2.29/pt-wk)
 
 ---
 
-## Performance Summary & Robust Evaluation
-Benchmarked across 5 independent patient-wise `GroupShuffleSplit` seeds (70% train, 15% validation, 15% test; zero subject overlap between splits):
-
-| Model Modality Tier | Mean ROC-AUC ± SD | Mean PR-AUC ± SD | Incremental Lift vs EHR Baseline |
-| :--- | :---: | :---: | :---: |
-| **Tier 1: EHR Static Only** | Evaluated via 5-fold cross-seed | Evaluated via 5-fold cross-seed | Baseline |
-| **Tier 2: EHR + Home BP Cuff** | Evaluated via 5-fold cross-seed | Evaluated via 5-fold cross-seed | + Home cuff hemodynamics |
-| **Tier 3: + Wearable Sleep & HRV** | Evaluated via 5-fold cross-seed | Evaluated via 5-fold cross-seed | + Autonomic & sleep debt early warnings |
-| **Tier 4: Full Digital Twin (+ Adherence)** | Evaluated via 5-fold cross-seed | Evaluated via 5-fold cross-seed | Multimodal synthesis |
-
-- **Probability Calibration:** Isotonic regression fitted strictly on the independent validation split, reducing Expected Calibration Error (ECE) and Brier score.
-- **Alert Fatigue Control:** High-risk alert threshold ($\ge 0.65$) tuned to maintain false alerts per patient-week below 1.0, with an automated 24-hour alert deduplication cooldown.
+## Performance Summary (5-Fold GroupKFold)
+- **Pooled Out-of-Fold ROC-AUC:** 0.8143 ± 0.0283 (Patient Cluster 95% CI: [0.7338, 0.8155])
+- **Pooled Out-of-Fold PR-AUC:** 0.6045 ± 0.0455 (Patient Cluster 95% CI: [0.4443, 0.6039])
+- **Ablation Findings:** Blood pressure history is the only consistent gain across all patient folds (+0.1671 ROC, 5/5 wins). Sleep/HRV and adherence gains are inconsistent under daily cuff monitoring. Under sparse cuff monitoring (2-3 readings/week), sleep/HRV gains are suggestive only (4/5 wins).
 
 ---
 

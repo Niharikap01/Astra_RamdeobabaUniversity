@@ -2,78 +2,76 @@
 
 **Model Version:** 1.1.0  
 **Target:** 24-Hour Hypertensive Episode Prediction (Next-day SBP $\ge 140$ mmHg or DBP $\ge 90$ mmHg)  
-**Positive Episode Rate:** 27.7%  
+**Positive Episode Rate:** 27.6%  
 **Ground Truth:** Validated Home Blood Pressure Cuff Readings  
-**Context Modalities:** Wearable Sleep Architecture, Autonomic HRV, Physical Activity, Smart Adherence  
+**Cross-Validation Protocol:** 5-Fold GroupKFold over 200 patients (zero patient overlap across folds; 21,000 daily records)  
 
 ---
 
-## 1. Executive Summary
+## 1. Executive Summary & Out-of-Fold Performance
 
-NightWatch benchmarks next-day hypertensive episode prediction by combining static EHR profiles, home blood pressure monitoring, and longitudinal wearable telemetry. On held-out patient subjects using patient-level  (70% train / 15% validation / 15% test; 3,150 test samples across 30 patients), the full multimodal model achieves a **ROC-AUC of 0.7903** and a **PR-AUC of 0.5000**.
-
-Using a **patient-level cluster bootstrap** (1,000 resamples of whole patients), the 95% confidence intervals are:
-- **ROC-AUC (Patient Cluster 95% CI):** [0.6925, 0.8655]
-- **PR-AUC (Patient Cluster 95% CI):** [0.3292, 0.6062]
+NightWatch evaluates multimodal clinical telemetry for next-day hypertensive episode warning. On the complete 200-patient cohort evaluated via 5-Fold GroupKFold cross-validation, the full multimodal digital twin reaches:
+- **Pooled Out-of-Fold ROC-AUC:** 0.8143 (Patient Cluster 95% CI: [0.7338, 0.8155])
+- **Pooled Out-of-Fold PR-AUC:** 0.6045 (Patient Cluster 95% CI: [0.4443, 0.6039])
 
 ---
 
-## 2. Four-Tier Modality Ablation (5 Independent Patient-Wise Split Seeds)
+## 2. Five-Fold GroupKFold Modality Ablation
 
-### 2.1. Absolute Performance Across Seeds
-| Model Tier | Input Features | Mean ROC-AUC ± SD | Mean PR-AUC ± SD | Seed 42 ROC-AUC | Seed 42 PR-AUC |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **1. EHR Only** | Demographics, ICD-10 comorbidities, baseline labs | 0.6069 ± 0.0719 | 0.3956 ± 0.0832 | 0.5901 | 0.3724 |
-| **2. EHR + BP Cuff** | Static EHR + longitudinal morning & evening BP trends | 0.7976 ± 0.0347 | 0.5118 ± 0.0826 | 0.7812 | 0.4850 |
-| **3. + Sleep Architecture & HRV** | Static EHR + BP + sleep debt, efficiency, RMSSD HRV | 0.7997 ± 0.0400 | 0.5527 ± 0.0321 | 0.7864 | 0.4921 |
-| **4. Full Multimodal Twin** | Full features (+ steps, sedentary hours, oral med adherence) | **0.8043 ± 0.0364** | **0.5399 ± 0.0457** | **0.7903** | **0.5000** |
+### 2.1. Absolute Performance Across 5 Folds
+| Model Tier | Input Features | Mean ROC-AUC ± SD | Mean PR-AUC ± SD |
+| :--- | :--- | :---: | :---: |
+| **1. EHR Only** | Demographics, ICD-10 comorbidities, baseline labs | 0.6453 ± 0.0379 | 0.4171 ± 0.0531 |
+| **2. EHR + BP Cuff** | Static EHR + longitudinal morning & evening BP trends | 0.8124 ± 0.0210 | 0.5757 ± 0.0236 |
+| **3. + Sleep Architecture & HRV** | Static EHR + BP + sleep debt, efficiency, RMSSD HRV | 0.8159 ± 0.0253 | 0.5937 ± 0.0514 |
+| **4. Full Multimodal Twin** | Full features (+ steps, sedentary hours, oral med adherence) | **0.8143 ± 0.0283** | **0.6045 ± 0.0455** |
 
-### 2.2. Paired Differences Between Consecutive Tiers
-Differences are computed within the exact same patient split seed (=5$ seeds):
+### 2.2. Paired Consecutive Differences (Within Same Patient Folds)
+| Comparison | $\Delta$ ROC-AUC (Mean ± SD) | ROC Wins | $\Delta$ PR-AUC (Mean ± SD) | PR Wins | Empirical Conclusion |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Tier 2 (EHR+BP) vs Tier 1 (EHR)** | **+0.1671 ± 0.0405** | **5/5** | **+0.1586 ± 0.0725** | **5/5** | **Consistent gain**: BP history provides large, statistically decisive lift |
+| **Tier 3 (+Sleep/HRV) vs Tier 2 (EHR+BP)** | +0.0035 ± 0.0093 | 3/5 | +0.0181 ± 0.0292 | 3/5 | **Inconsistent gain**: marginal mean lift with high fold-to-fold variance |
+| **Tier 4 (Full Twin) vs Tier 3 (+Sleep/HRV)** | -0.0016 ± 0.0039 | 2/5 | +0.0108 ± 0.0302 | 2/5 | **Inconsistent gain**: adherence/activity features yield mixed fold wins |
 
-| Comparison | $\Delta$ ROC-AUC (Mean ± SD) | ROC Win Rate | $\Delta$ PR-AUC (Mean ± SD) | PR Win Rate | Consistent Benefit? |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Tier 2 (EHR+BP) vs Tier 1 (EHR)** | **+0.1907 ± 0.0441** | **5/5** | **+0.1162 ± 0.1482** | **4/5** | **Yes (consistent lift)** |
-| **Tier 3 (+Sleep/HRV) vs Tier 2 (EHR+BP)** | +0.0021 ± 0.0173 | 3/5 | +0.0409 ± 0.0917 | 3/5 | Mixed (marginal lift; 3/5 wins) |
-| **Tier 4 (Full Twin) vs Tier 3 (+Sleep/HRV)** | +0.0046 ± 0.0086 | 3/5 | -0.0128 ± 0.0411 | 2/5 | Mixed (no consistent PR lift) |
-
-*Finding:* Adding daily home BP cuff data to static EHR yields a decisive, consistent lift (+0.1907 ROC, 5/5 wins). With daily BP cuff data already present, adding wearable sleep and HRV yields only small paired differences (+0.0021 ROC, +0.0409 PR), outperforming Tier 2 in 3 of 5 seeds.
+*Core Finding:* Blood pressure history is the only consistent gain across all patient folds. Wearable sleep, autonomic HRV, and medication adherence metrics show marginal and inconsistent incremental lift when daily twice-cuff readings are already captured.
 
 ---
 
-## 3. Sparse-BP Experiment (2–3 Cuff Readings / Week)
+## 3. Sparse-BP Sensitivity Experiment (2–3 Readings / Week)
 
-In real-world remote monitoring, patients rarely take cuff measurements every day. When cuff readings are limited to 2–3 days per week (unmeasured days forward-filled from last measurement, matching clinical RPM workflow):
+When home blood pressure cuff readings are sparse (2–3 measurements per week, forward-filled on non-measured days):
 
 | Model Tier | Daily BP Mean ROC-AUC | Sparse BP Mean ROC-AUC ± SD | Sparse BP Mean PR-AUC ± SD | $\Delta$ vs Prev Tier (ROC) | $\Delta$ vs Prev Tier (PR) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **1. EHR Only** | 0.6069 | 0.6069 ± 0.0719 | 0.3956 ± 0.0832 | Baseline | Baseline |
-| **2. EHR + BP Cuff** | 0.7976 | 0.7526 ± 0.0277 | 0.4640 ± 0.0512 | +0.1457 ± 0.0670 (5/5) | +0.0684 ± 0.1265 (4/5) |
-| **3. + Sleep & HRV** | 0.7997 | 0.7822 ± 0.0439 | 0.5046 ± 0.0355 | +0.0296 ± 0.0297 (3/5) | **+0.0406 ± 0.0542 (4/5)** |
-| **4. Full Twin** | 0.8043 | 0.7854 ± 0.0430 | 0.5087 ± 0.0273 | +0.0031 ± 0.0067 (3/5) | +0.0042 ± 0.0096 (3/5) |
+| **1. EHR Only** | 0.6453 | 0.6297 ± 0.0850 | 0.4214 ± 0.0844 | Baseline | Baseline |
+| **2. EHR + BP Cuff** | 0.8124 | 0.7544 ± 0.0240 | 0.4686 ± 0.0658 | +0.1248 ± 0.0661 (5/5) | +0.0472 ± 0.1402 (4/5) |
+| **3. + Sleep & HRV** | 0.8159 | 0.7816 ± 0.0434 | 0.4859 ± 0.0388 | +0.0271 ± 0.0318 (4/5) | +0.0173 ± 0.0443 (4/5) |
+| **4. Full Twin** | 0.8143 | 0.7844 ± 0.0404 | 0.4929 ± 0.0288 | +0.0029 ± 0.0061 (3/5) | +0.0070 ± 0.0113 (2/5) |
 
-*Clinical Insight:* When home cuff readings are sparse (2–3 readings/week), adding continuous wearable sleep and autonomic signals provides a larger and more consistent benefit (+0.0296 ROC-AUC, +0.0406 PR-AUC, 4/5 wins on PR) than when twice-daily cuff readings are available.
-
----
-
-## 4. Alert Timing & Lead Time Worked Example
-
-Alerts are evaluated at bedtime (21:00 on day $). If calibrated risk probability  \ge 0.50$, a clinician alert fires. Next-day cuff readings occur at 08:00 (morning) and 20:30 (evening).
-
-### Worked Examples from Test Split:
-1. **Patient A (, Day 14):**
-   - **Alert Evaluation:** Day 14 21:00, Calibrated Prob = 0.504 $\rightarrow$ **Alert Fired**.
-   - **Context:** Prior-night sleep 4.48h (efficiency 73.3%), HRV 8.4 ms, missed dose streak = 1.
-   - **Next-Day Episode:** Day 15 Morning (08:00) SBP 141.6 / DBP 98.4 mmHg (**Hypertensive Surge**).
-   - **Lead Time:** {\text{morning onset}} (08:00) - T_{\text{alert}} (21:00) = \mathbf{11.0\text{ hours}}$.
-2. **Patient B (, Day 36):**
-   - **Alert Evaluation:** Day 36 21:00, Calibrated Prob = 0.564 $\rightarrow$ **Alert Fired**.
-   - **Context:** Short sleep 5.0h, suppressed HRV 11.0 ms.
-   - **Next-Day Episode:** Day 37 Morning (08:00) SBP 139.4 / DBP 86.0 (normotensive); Evening (20:30) DBP 90.4 mmHg (**Hypertensive Excursion**).
-   - **Lead Time:** {\text{evening onset}} (20:30) - T_{\text{alert}} (21:00) = \mathbf{23.5\text{ hours}}$.
+*Observation on Sparse-BP:* The incremental gain from sleep/HRV under sparse BP is **suggestive only** (4/5 seeds, with standard deviation 0.0318 roughly equal to the mean difference +0.0271). While continuous telemetry helps bridge unmeasured cuff intervals, the effect is modest and should not be overstated.
 
 ---
 
-## 5. Limitations
+## 4. Operating Points & Validation-Derived Clinical Thresholds
 
-Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients. The coupling between sleep debt, vagal tone (HRV), and next-day vascular pressure reflects algorithmic formulations and literature priors rather than prospectively verified human physiology. Real-world validation with randomized clinical trials and certified ambulatory blood pressure monitoring (ABPM) is strictly required before clinical deployment.
+Thresholds are derived strictly on the validation sets to respect clinical alert fatigue budgets:
+- **Moderate Risk Threshold ($\\tau = 0.34$):** Target $\\le 0.80$ false alerts / patient-week on validation.
+- **High Risk Threshold ($\\tau = 0.47$):** Lowest threshold achieving $\\le 0.30$ false alerts / patient-week on validation.
+
+### Out-of-Fold Test Performance at Derived Operating Points
+| Risk Tier | Decision Threshold | Sensitivity (Recall) | Specificity | Precision (PPV) | False Alerts / Patient-Week | Clinical Action Profile |
+| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Moderate Risk** | **$\\tau \\ge 0.34$** | 98.5% | 33.8% | 31.8% | 3.529 | Lifestyle review, sleep hygiene check, medication adherence verification |
+| **High Risk** | **$\\tau \\ge 0.47$** | 86.3% | 57.0% | 38.6% | 2.291 | Direct clinician notification, morning BP confirmation, medication review |
+
+---
+
+## 5. Protocol Timing & Action Window Note
+
+Alerts run at 21:00 (bedtime assessment) when daily wearable metrics sync. If an episode occurs the next day, it is detected either at the morning cuff measurement (08:00; 11.0 hours later) or evening measurement (20:30; 23.5 hours later). These lead times are **design-determined by the measurement protocol schedule**, not an intrinsic property or discovery of the predictive model.
+
+---
+
+## 6. Limitations
+
+Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients. The coupling between sleep debt, vagal tone (HRV), and next-day vascular pressure reflects algorithmic formulations and literature priors rather than prospectively verified human biology. Prospective clinical validation with randomized clinical trials and certified ambulatory blood pressure monitoring (ABPM) is strictly required before any real-world deployment.

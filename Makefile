@@ -20,6 +20,10 @@ install:
 train:
 	python -m ml.train_lightgbm
 
+evaluate:
+	python -m ml.robustness
+
+
 test:
 	pytest backend/tests -v --cov=backend/app --cov-report=term-missing
 

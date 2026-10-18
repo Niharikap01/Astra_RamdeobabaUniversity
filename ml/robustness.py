@@ -434,8 +434,11 @@ def render_publication_plots(
     oof_predictions: Dict[str, np.ndarray],
     kfold_summary: Dict[str, Dict[str, float]],
     artifacts_dir: str = "ml/artifacts",
+    figures_dir: Optional[str] = None,
 ) -> None:
     """Generate publication diagnostic figures from empirical pooled OOF predictions."""
+    if figures_dir:
+        os.makedirs(figures_dir, exist_ok=True)
     y_true = dataset_df["target"].values
     full_probs = oof_predictions["full"]
 
@@ -463,6 +466,8 @@ def render_publication_plots(
     axes[1].grid(True, linestyle=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(os.path.join(artifacts_dir, "roc_prc_curves.png"), dpi=200)
+    if figures_dir:
+        plt.savefig(os.path.join(figures_dir, "roc_prc_curves.png"), dpi=200)
     plt.close(fig)
 
     # 2. Calibration Reliability Curve
@@ -479,6 +484,8 @@ def render_publication_plots(
     ax.grid(True, linestyle=":", alpha=0.6)
     plt.tight_layout()
     plt.savefig(os.path.join(artifacts_dir, "calibration_curve.png"), dpi=200)
+    if figures_dir:
+        plt.savefig(os.path.join(figures_dir, "calibration_curve.png"), dpi=200)
     plt.close(fig)
 
     # 3. Ablation Comparison Bar Chart
@@ -508,6 +515,8 @@ def render_publication_plots(
 
     plt.tight_layout()
     plt.savefig(os.path.join(artifacts_dir, "ablation_comparison.png"), dpi=200)
+    if figures_dir:
+        plt.savefig(os.path.join(figures_dir, "ablation_comparison.png"), dpi=200)
     plt.close(fig)
 
 
@@ -606,7 +615,7 @@ Alerts run at 21:00 (bedtime assessment) when daily wearable metrics sync. If an
 Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients. The coupling between sleep debt, vagal tone (HRV), and next-day vascular pressure reflects algorithmic formulations and literature priors rather than prospectively verified human biology. Prospective clinical validation with randomized clinical trials and certified ambulatory blood pressure monitoring (ABPM) is strictly required before any real-world deployment.
 """
 
-    with open(eval_report_path, "w") as f:
+    with open(eval_report_path, "w", encoding="utf-8") as f:
         f.write(report_text)
     logger.info(f"Saved regenerated evaluation report to {eval_report_path}")
 
@@ -644,7 +653,7 @@ Results come from synthetic data with assumptions built into the simulator, and 
 
 Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients. The coupling between prior-night sleep architecture, autonomic balance, and vascular tone is modeled via algorithmic differential equations and literature priors rather than prospectively verified human biology. Prospective clinical validation with randomized clinical trials and certified ambulatory blood pressure monitoring (ABPM) is strictly required before any real-world deployment.
 """
-    with open(model_card_path, "w") as f:
+    with open(model_card_path, "w", encoding="utf-8") as f:
         f.write(model_card_text)
     logger.info(f"Saved updated model card to {model_card_path}")
 
@@ -656,9 +665,11 @@ def main() -> None:
 
     artifacts_dir = str(PROJECT_ROOT / "ml" / "artifacts")
     docs_dir = str(PROJECT_ROOT / "docs")
+    figures_dir = str(PROJECT_ROOT / "docs" / "figures")
     data_dir = PROJECT_ROOT / "data"
     os.makedirs(artifacts_dir, exist_ok=True)
     os.makedirs(docs_dir, exist_ok=True)
+    os.makedirs(figures_dir, exist_ok=True)
 
     # 1. Load data
     logger.info("Loading processed dataset and raw cohort...")
@@ -670,11 +681,19 @@ def main() -> None:
     # 2. 5-Fold GroupKFold Ablation
     kfold_res = run_group_kfold_pipeline(dataset_df, n_splits=5, seed=42)
 
-    # 3. Derive operating thresholds on validation set
+    # 3. Operating thresholds from ml/artifacts/thresholds.json (fallback: derive on validation)
     test_df = pd.read_parquet(data_dir / "processed" / "test.parquet")
-    val_feats = val_df[FEATURE_SETS["full"]].values
-    val_probs = kfold_res["best_calibrator"].predict_proba(val_feats)[:, 1]
-    tau_high, tau_mod, val_thresh_info = derive_operating_thresholds(val_df, val_probs)
+    thresh_path = os.path.join(artifacts_dir, "thresholds.json")
+    if os.path.exists(thresh_path):
+        logger.info(f"Loading operating thresholds from {thresh_path}...")
+        with open(thresh_path) as f:
+            t_data = json.load(f)
+            tau_high = float(t_data.get("high", 0.47))
+            tau_mod = float(t_data.get("moderate", 0.34))
+    else:
+        val_feats = val_df[FEATURE_SETS["full"]].values
+        val_probs = kfold_res["best_calibrator"].predict_proba(val_feats)[:, 1]
+        tau_high, tau_mod, val_thresh_info = derive_operating_thresholds(val_df, val_probs)
 
     # Evaluate on test set
     test_feats = test_df[FEATURE_SETS["full"]].values
@@ -688,9 +707,15 @@ def main() -> None:
     # 4. Sparse-BP Experiment
     sparse_res = run_sparse_bp_experiment(records_df, patients_df, seeds=EVALUATION_SEEDS)
 
-    # 5. Render plots
+    # 5. Render plots (both ml/artifacts/ and docs/figures/)
     logger.info("Rendering publication diagnostic plots...")
-    render_publication_plots(dataset_df, kfold_res["oof_predictions"], kfold_res["kfold_summary"], artifacts_dir)
+    render_publication_plots(
+        dataset_df,
+        kfold_res["oof_predictions"],
+        kfold_res["kfold_summary"],
+        artifacts_dir,
+        figures_dir,
+    )
 
     # 6. Save Model Artifacts
     logger.info("Writing production model checkpoints and metadata...")
