@@ -75,6 +75,14 @@ class PredictionService:
             logger.error(f"Failed to load ML artifacts: {e}", exc_info=True)
             raise RuntimeError(f"Unable to initialize ML model artifacts: {e}")
 
+    def compute_confidence(
+        self,
+        prob: float,
+        coverage_pct: Optional[float] = None,
+    ) -> Tuple[float, List[float]]:
+        """Alias for compute_uncertainty_range required by honest-data-layer tests."""
+        return self.compute_uncertainty_range(prob, coverage_pct=coverage_pct)
+
     def compute_uncertainty_range(
         self,
         prob: float,
