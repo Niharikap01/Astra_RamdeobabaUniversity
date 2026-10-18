@@ -60,14 +60,15 @@ def test_config_app_port_env(monkeypatch):
 
 
 
-def test_patients_endpoints(test_client, seeded_patient):
+def test_patients_endpoints(test_client, seeded_patient, db_session):
     """GET /api/patients and GET /api/patients/{id}/profile"""
     # 1. List
     res_list = test_client.get("/api/patients")
     assert res_list.status_code == 200
     patients = res_list.json()
     assert len(patients) >= 1
-    assert any(p["patient_id"] == seeded_patient.patient_id for p in patients)
+    p_data = next(p for p in patients if p["patient_id"] == seeded_patient.patient_id)
+    assert "data_coverage_pct" in p_data
 
     # 2. Profile
     res_prof = test_client.get(f"/api/patients/{seeded_patient.patient_id}/profile")
@@ -76,6 +77,43 @@ def test_patients_endpoints(test_client, seeded_patient):
     assert prof["patient_id"] == seeded_patient.patient_id
     assert "baseline_sbp" in prof
     assert "diagnoses" in prof
+    assert "data_coverage_pct" in prof
+
+    # 3. Patient without prediction returns null risk level and probability
+    from backend.app.models import Patient
+    p_unpredicted = Patient(
+        patient_id="NW-TEST-UNPREDICTED",
+        name="Unpredicted Patient",
+        age=50,
+        sex="M",
+        height_cm=175.0,
+        weight_kg=75.0,
+        bmi=24.5,
+        archetype="healthy_resilient",
+    )
+    db_session.add(p_unpredicted)
+    db_session.commit()
+
+    res_unpred = test_client.get(f"/api/patients/{p_unpredicted.patient_id}/profile")
+    assert res_unpred.status_code == 200
+    unpred_prof = res_unpred.json()
+    assert unpred_prof["latest_risk_level"] is None
+    assert unpred_prof["latest_probability"] is None
+
+
+def test_get_endpoints_are_readonly(test_client, seeded_patient, db_session):
+    """GET endpoints must not write prediction rows to the database."""
+    from backend.app.models import Prediction
+    pred_count_before = db_session.query(Prediction).filter_by(patient_id=seeded_patient.patient_id).count()
+
+    res_twin = test_client.get(f"/api/patients/{seeded_patient.patient_id}/twin")
+    assert res_twin.status_code == 200
+
+    res_horizon = test_client.get(f"/api/patients/{seeded_patient.patient_id}/risk-horizon")
+    assert res_horizon.status_code == 200
+
+    pred_count_after = db_session.query(Prediction).filter_by(patient_id=seeded_patient.patient_id).count()
+    assert pred_count_before == pred_count_after
 
 
 def test_digital_twin_endpoints(test_client, seeded_patient):

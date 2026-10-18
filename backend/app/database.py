@@ -37,7 +37,20 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def init_db() -> None:
-    """Create all registered tables."""
+    """Create all registered tables and ensure schema integrity."""
     from backend.app import models  # Ensure all models are loaded
+    from sqlalchemy import inspect
+
+    try:
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        if "alerts" in existing_tables:
+            columns = {col["name"] for col in inspector.get_columns("alerts")}
+            if "snoozed_until" not in columns:
+                logger.warning("Stale database schema detected (missing alerts.snoozed_until). Recreating database...")
+                Base.metadata.drop_all(bind=engine)
+    except Exception as e:
+        logger.warning(f"Schema check error: {e}")
+
     Base.metadata.create_all(bind=engine)
     logger.info("Database schema initialized.")

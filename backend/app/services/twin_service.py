@@ -54,11 +54,8 @@ class TwinService:
         static_dict = self.ehr_service.get_patient_static_dict(patient)
         features_dict = self.fusion_service.compute_current_features(static_dict)
 
-        # Get or generate latest prediction
+        # Get latest prediction (read-only GET: do not write to database)
         latest_pred = self.pred_service.get_latest_prediction(patient_id)
-        if not latest_pred:
-            latest_pred = self.pred_service.generate_and_save_prediction(patient_id, features_dict)
-            self.alert_service.evaluate_and_create_alert(patient_id, latest_pred)
 
         # Construct sub-schemas without silent imputation
         import math
@@ -99,31 +96,35 @@ class TwinService:
         )
 
         # Top factors and plain-language reasons
-        top_factors_data = [
-            TopFactor(
-                feature=f.get("feature", ""),
-                display_name=f.get("display_name", ""),
-                value=float(f.get("value", 0.0)),
-                impact=float(f.get("impact", 0.0)),
-                is_risk_driver=bool(f.get("is_risk_driver", False)),
-                reason=f.get("reason", ""),
+        if latest_pred:
+            top_factors_data = [
+                TopFactor(
+                    feature=f.get("feature", ""),
+                    display_name=f.get("display_name", ""),
+                    value=float(f.get("value", 0.0)),
+                    impact=float(f.get("impact", 0.0)),
+                    is_risk_driver=bool(f.get("is_risk_driver", False)),
+                    reason=f.get("reason", ""),
+                )
+                for f in latest_pred.top_factors
+            ]
+            pred_resp = PredictionResponse(
+                prediction_id=latest_pred.prediction_id,
+                patient_id=patient_id,
+                probability=round(latest_pred.probability, 4),
+                risk_level=latest_pred.risk_level,
+                model_version=latest_pred.model_version,
+                generated_at=latest_pred.generated_at,
+                top_factors=top_factors_data,
+                feature_snapshot=latest_pred.feature_snapshot or {},
             )
-            for f in latest_pred.top_factors
-        ]
-
-        pred_resp = PredictionResponse(
-            prediction_id=latest_pred.prediction_id,
-            patient_id=patient_id,
-            probability=round(latest_pred.probability, 4),
-            risk_level=latest_pred.risk_level,
-            model_version=latest_pred.model_version,
-            generated_at=latest_pred.generated_at,
-            top_factors=top_factors_data,
-            feature_snapshot=latest_pred.feature_snapshot or {},
-        )
+            recommended_actions = self._generate_recommended_actions(patient, features_dict, latest_pred.probability)
+        else:
+            top_factors_data = []
+            pred_resp = None
+            recommended_actions = []
 
         fingerprint = FingerprintService.compute_fingerprint(static_dict, features_dict)
-        recommended_actions = self._generate_recommended_actions(patient, features_dict, latest_pred.probability)
 
         return DigitalTwinResponse(
             patient_id=patient_id,
@@ -187,10 +188,11 @@ class TwinService:
         features_dict = self.fusion_service.compute_current_features(static_dict)
 
         latest_pred = self.pred_service.get_latest_prediction(patient_id)
-        if not latest_pred:
-            latest_pred = self.pred_service.generate_and_save_prediction(patient_id, features_dict, enforce_coverage=False)
-
-        base_risk_pct = round(latest_pred.probability * 100.0, 1)
+        if latest_pred:
+            base_risk_pct = round(latest_pred.probability * 100.0, 1)
+        else:
+            prob, _, _ = self.pred_service.score_features(features_dict)
+            base_risk_pct = round(prob * 100.0, 1)
 
         # 1. Compute honest data coverage from stored readings
         overall_cov, per_source = self.fusion_service.compute_data_coverage(patient_id, days_lookback=1)

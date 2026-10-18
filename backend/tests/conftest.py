@@ -108,4 +108,16 @@ def seeded_patient(db_session) -> Patient:
             ))
 
     db_session.commit()
+
+    # Generate initial prediction at seed time
+    from backend.app.services.prediction_service import PredictionService
+    from backend.app.services.ehr_service import EHRService
+    from backend.app.services.fusion_service import FusionService
+    ehr_svc = EHRService(db_session)
+    fusion_svc = FusionService(db_session)
+    pred_svc = PredictionService(db_session)
+    static_dict = ehr_svc.get_patient_static_dict(patient)
+    features = fusion_svc.compute_current_features(static_dict)
+    pred_svc.generate_and_save_prediction(patient.patient_id, features, enforce_coverage=False)
+
     return patient

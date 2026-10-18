@@ -17,6 +17,7 @@ from backend.app.schemas import (
 )
 from backend.app.services.alert_service import AlertService
 from backend.app.services.ehr_service import EHRService
+from backend.app.services.fusion_service import FusionService
 from backend.app.services.prediction_service import PredictionService
 
 router = APIRouter(prefix="/api/patients", tags=["Patients"])
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/api/patients", tags=["Patients"])
 
 @router.get("", response_model=List[PatientSummary])
 def list_patients(
-    limit: int = Query(default=200, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
@@ -32,6 +33,7 @@ def list_patients(
     ehr = EHRService(db)
     pred_svc = PredictionService(db)
     alert_svc = AlertService(db)
+    fusion_svc = FusionService(db)
 
     patients = ehr.list_patients(limit=limit, offset=offset)
     results = []
@@ -39,6 +41,13 @@ def list_patients(
     for p in patients:
         latest_pred = pred_svc.get_latest_prediction(p.patient_id)
         open_alerts = [a for a in alert_svc.get_patient_alerts(p.patient_id, limit=10) if a.status == "open"]
+
+        pred_cov = None
+        if latest_pred and latest_pred.feature_snapshot:
+            pred_cov = latest_pred.feature_snapshot.get("_data_coverage_pct")
+        if pred_cov is None:
+            cov_val, _ = fusion_svc.compute_data_coverage(p.patient_id, days_lookback=7)
+            pred_cov = cov_val
 
         results.append(
             PatientSummary(
@@ -51,9 +60,10 @@ def list_patients(
                 bmi=p.bmi,
                 archetype=p.archetype,
                 created_at=p.created_at,
-                latest_risk_level=latest_pred.risk_level if latest_pred else "Low",
-                latest_probability=latest_pred.probability if latest_pred else 0.15,
+                latest_risk_level=latest_pred.risk_level if latest_pred else None,
+                latest_probability=latest_pred.probability if latest_pred else None,
                 open_alerts_count=len(open_alerts),
+                data_coverage_pct=round(pred_cov, 1) if pred_cov is not None else None,
             )
         )
     return results
@@ -70,6 +80,14 @@ def get_patient_profile(patient_id: str, db: Session = Depends(get_db)):
     static_dict = ehr.get_patient_static_dict(patient)
     pred_svc = PredictionService(db)
     latest_pred = pred_svc.get_latest_prediction(patient_id)
+    fusion_svc = FusionService(db)
+
+    pred_cov = None
+    if latest_pred and latest_pred.feature_snapshot:
+        pred_cov = latest_pred.feature_snapshot.get("_data_coverage_pct")
+    if pred_cov is None:
+        cov_val, _ = fusion_svc.compute_data_coverage(patient_id, days_lookback=7)
+        pred_cov = cov_val
 
     return PatientProfileDetail(
         patient_id=patient.patient_id,
@@ -81,9 +99,10 @@ def get_patient_profile(patient_id: str, db: Session = Depends(get_db)):
         bmi=patient.bmi,
         archetype=patient.archetype,
         created_at=patient.created_at,
-        latest_risk_level=latest_pred.risk_level if latest_pred else "Low",
-        latest_probability=latest_pred.probability if latest_pred else 0.15,
+        latest_risk_level=latest_pred.risk_level if latest_pred else None,
+        latest_probability=latest_pred.probability if latest_pred else None,
         open_alerts_count=0,
+        data_coverage_pct=round(pred_cov, 1) if pred_cov is not None else None,
         diagnoses=static_dict.get("diagnoses", []),
         medications=static_dict.get("medications", []),
         baseline_hrv_rmssd=round(static_dict.get("baseline_hrv_rmssd", 35.0), 1),

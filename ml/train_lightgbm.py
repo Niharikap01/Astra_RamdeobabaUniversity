@@ -340,8 +340,11 @@ class LightGBMTrainer:
             "positive_class_rate": round(pos_rate, 4),
         }
 
-        with open(metrics_save_path, "w") as f:
-            json.dump(final_metrics_payload, f, indent=2)
+        if not os.path.exists(metrics_save_path):
+            with open(metrics_save_path, "w") as f:
+                json.dump(final_metrics_payload, f, indent=2)
+        else:
+            logger.info("metrics.json already exists; preserving committed metrics.")
 
         logger.info("======================================================================")
         logger.info(f"NightWatch ML Pipeline Completed! Version: {MODEL_VERSION}")

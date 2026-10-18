@@ -35,9 +35,10 @@ class PatientBase(BaseModel):
 class PatientSummary(PatientBase):
     patient_id: str
     created_at: datetime
-    latest_risk_level: Optional[str] = "Low"
-    latest_probability: Optional[float] = 0.15
+    latest_risk_level: Optional[str] = None
+    latest_probability: Optional[float] = None
     open_alerts_count: int = 0
+    data_coverage_pct: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -281,7 +282,7 @@ class DigitalTwinResponse(BaseModel):
     as_of: datetime
     static_profile: StaticProfile
     dynamic_state: DynamicState
-    prediction: PredictionResponse
+    prediction: Optional[PredictionResponse] = None
     sleep_fingerprint: SleepFingerprintData
     top_factors: List[TopFactor]
     recommended_actions: List[str]

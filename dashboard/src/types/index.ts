@@ -12,9 +12,10 @@ export interface PatientSummary {
   bmi: number;
   archetype: string;
   created_at: string;
-  latest_risk_level: "Low" | "Moderate" | "High";
-  latest_probability: number;
+  latest_risk_level: "Low" | "Moderate" | "High" | null;
+  latest_probability: number | null;
   open_alerts_count: number;
+  data_coverage_pct?: number | null;
 }
 
 export interface PatientProfileDetail extends PatientSummary {
@@ -101,7 +102,7 @@ export interface DigitalTwinResponse {
   as_of: string;
   static_profile: StaticProfile;
   dynamic_state: DynamicState;
-  prediction: PredictionResponse;
+  prediction?: PredictionResponse | null;
   sleep_fingerprint: SleepFingerprintData;
   top_factors: TopFactor[];
   recommended_actions: string[];

@@ -38,6 +38,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing NightWatch database and model runtime...")
     init_db()
 
+    # Ensure initial database seed if empty
+    db_init = SessionLocal()
+    try:
+        from backend.app.models import Patient
+        if db_init.query(Patient).count() == 0:
+            logger.info("Database has no patients. Running startup seed...")
+            from backend.scripts.seed import seed_database
+            seed_database(num_patients=200, days=120)
+    except Exception as e:
+        logger.error(f"Startup patient check/seeding error: {e}")
+    finally:
+        db_init.close()
+
     # Ensure ML artifacts are loaded
     db_pred = SessionLocal()
     try:

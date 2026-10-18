@@ -92,6 +92,21 @@ def seed_database(num_patients: int = 200, days: int = 120, force: bool = False)
                 db.commit()
                 logger.info(f"Seeded {p_idx + 1}/{len(cohort)} patients...")
 
+        logger.info("Generating initial predictions for seeded cohort...")
+        from backend.app.services.ehr_service import EHRService
+        from backend.app.services.fusion_service import FusionService
+        from backend.app.services.prediction_service import PredictionService
+        ehr_svc = EHRService(db)
+        fusion_svc = FusionService(db)
+        pred_svc = PredictionService(db)
+        for p_idx, profile in enumerate(cohort):
+            static_dict = ehr_svc.get_patient_static_dict(profile.patient_id)
+            if static_dict:
+                features_dict = fusion_svc.compute_current_features(static_dict)
+                pred_svc.generate_and_save_prediction(profile.patient_id, features_dict, enforce_coverage=False)
+            if (p_idx + 1) % 50 == 0 or (p_idx + 1) == len(cohort):
+                logger.info(f"Generated initial predictions for {p_idx + 1}/{len(cohort)} patients...")
+
         logger.info("Successfully completed NightWatch database seeding.")
     except Exception as e:
         db.rollback()
