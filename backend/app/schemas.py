@@ -73,6 +73,38 @@ class SensorReadingResponse(SensorReadingCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DailyReadingItem(BaseModel):
+    date: str  # YYYY-MM-DD
+    timestamp: str  # ISO string in Asia/Kolkata
+    sbp: Optional[float] = None
+    dbp: Optional[float] = None
+    sleep_duration: Optional[float] = None
+    sleep_efficiency: Optional[float] = None
+    hrv_rmssd: Optional[float] = None
+    resting_hr: Optional[float] = None
+    steps: Optional[int] = None
+    medication_taken: Optional[int] = None
+
+
+class PersonalBaseline30d(BaseModel):
+    sbp: Optional[float] = None
+    dbp: Optional[float] = None
+    sleep_duration: Optional[float] = None
+    sleep_efficiency: Optional[float] = None
+    hrv_rmssd: Optional[float] = None
+    resting_hr: Optional[float] = None
+    steps: Optional[float] = None
+    medication_adherence: Optional[float] = None
+
+
+class ReadingsSeriesResponse(BaseModel):
+    patient_id: str
+    days: int
+    timezone: str = "Asia/Kolkata"
+    baseline_30d: PersonalBaseline30d
+    series: List[DailyReadingItem]
+
+
 # ==============================================================================
 # Prediction & Alert Schemas
 # ==============================================================================
@@ -128,7 +160,7 @@ class AlertAcknowledgeRequest(BaseModel):
 class AlertSnoozeRequest(BaseModel):
     clinician_name: str = "Dr. Clinician"
     snooze_hours: float = Field(default=4.0, ge=0.5, le=72.0)
-    reason: Optional[str] = None
+    reason: str = Field(min_length=3, description="Clinical reason for snoozing alert")
 
 
 class ThresholdsResponse(BaseModel):
@@ -308,7 +340,9 @@ class WhatIfResponse(BaseModel):
     delta: float
     baseline_risk_level: str
     new_risk_level: str
+    new_band: str
     changed_features: Dict[str, Any]
+    effect_note: str
     disclaimer: str
 
 
@@ -332,3 +366,4 @@ class SimulationStatusResponse(BaseModel):
     current_simulated_date: Optional[str] = None
     active_scenario: Optional[str] = None
     ticks_completed: int
+    last_tick_duration_seconds: Optional[float] = None

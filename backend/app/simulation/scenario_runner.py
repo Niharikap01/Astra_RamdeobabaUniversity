@@ -30,6 +30,7 @@ class SimulationStatus:
     active_scenario: Optional[str] = None
     last_tick_at: Optional[str] = None
     ticks_completed: int = 0
+    last_tick_duration_seconds: Optional[float] = None
 
 
 class ScenarioRunner:
@@ -39,13 +40,16 @@ class ScenarioRunner:
         self,
         step_seconds: float = 10.0,
         on_reading_generated: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        on_day_generated: Optional[Callable[[str, List[Dict[str, Any]]], Any]] = None,
     ) -> None:
         self.step_seconds = step_seconds
         self.on_reading_generated = on_reading_generated
+        self.on_day_generated = on_day_generated
         self.status = SimulationStatus(step_seconds=step_seconds)
         self._task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
         self.active_overrides: Dict[str, Dict[str, Any]] = {}
+        self.rng = np.random.default_rng(101)
         self.wearable_sim = WearableSimulator(seed=101)
 
     def set_scenario(self, patient_id: str, scenario_name: str) -> Dict[str, Any]:
@@ -108,7 +112,7 @@ class ScenarioRunner:
         sleep_h, deep_h, rem_h, awakenings, efficiency = self.wearable_sim._simulate_sleep(
             profile, is_weekend=(sim_date.weekday() >= 5), day_idx=new_day_idx
         )
-        stress = float(np.clip(np.random.beta(2, 5), 0.0, 1.0))
+        stress = float(np.clip(self.rng.beta(2, 5), 0.0, 1.0))
         med_taken, _ = self.wearable_sim._simulate_adherence(profile, streak=0)
         steps, active_min = self.wearable_sim._simulate_activity(profile, is_weekend=False, sleep_hours=sleep_h)
 
@@ -222,29 +226,41 @@ class ScenarioRunner:
         latest_records: Dict[str, DailySimulationRecord],
     ) -> None:
         """Asynchronous execution loop advancing simulated patient days."""
-        sim_day_offset = 1
-        current_time = datetime.now(timezone.utc)
+        sim_day_offset = 0
+        import time
 
         while not self._stop_event.is_set():
             try:
                 await asyncio.sleep(self.step_seconds)
-                sim_date = current_time + timedelta(days=sim_day_offset)
-                self.status.current_simulated_date = sim_date.strftime("%Y-%m-%d")
-                self.status.last_tick_at = datetime.now(timezone.utc).isoformat()
+                tick_start = time.perf_counter()
+                now_utc = datetime.now(timezone.utc)
+                self.status.current_simulated_date = now_utc.strftime("%Y-%m-%d")
+                self.status.last_tick_at = now_utc.isoformat()
                 self.status.ticks_completed += 1
 
                 for patient in patients:
                     prev_rec = latest_records.get(patient.patient_id)
                     day_idx = (prev_rec.day_index + 1) if prev_rec else sim_day_offset
-                    new_rec = self.step_patient_day(patient, prev_rec, day_idx, sim_date)
+                    new_rec = self.step_patient_day(patient, prev_rec, day_idx, now_utc)
                     latest_records[patient.patient_id] = new_rec
 
-                    if self.on_reading_generated:
-                        readings = new_rec.to_sensor_readings(sim_date)
+                    # Build sensor readings without future dates
+                    readings = new_rec.to_sensor_readings(now_utc - timedelta(days=1))
+                    for r in readings:
+                        r_dt = datetime.fromisoformat(r["recorded_at"])
+                        if r_dt > now_utc:
+                            r["recorded_at"] = now_utc.isoformat()
+                            r["ingested_at"] = now_utc.isoformat()
+
+                    if self.on_day_generated:
+                        await self.on_day_generated(patient.patient_id, readings)
+                    elif self.on_reading_generated:
                         for r in readings:
                             await self.on_reading_generated(r)
 
                 sim_day_offset += 1
+                tick_dur = round(time.perf_counter() - tick_start, 3)
+                self.status.last_tick_duration_seconds = tick_dur
             except asyncio.CancelledError:
                 break
             except Exception as e:

@@ -48,6 +48,7 @@ class Settings(BaseSettings):
 
     # Simulation defaults
     simulation_patient_count: int = Field(default=200, validation_alias=AliasChoices("SIMULATION_PATIENT_COUNT", "simulation_patient_count"))
+    simulation_max_patients: int = Field(default=30, validation_alias=AliasChoices("SIMULATION_MAX_PATIENTS", "simulation_max_patients"))
     simulation_history_days: int = Field(default=120, validation_alias=AliasChoices("SIMULATION_HISTORY_DAYS", "simulation_history_days"))
     simulation_step_seconds: float = Field(default=10.0, validation_alias=AliasChoices("SIMULATION_STEP_SECONDS", "simulation_step_seconds"))
     simulation_random_seed: int = Field(default=42, validation_alias=AliasChoices("SIMULATION_RANDOM_SEED", "simulation_random_seed"))

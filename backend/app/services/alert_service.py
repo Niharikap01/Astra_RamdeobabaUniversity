@@ -53,20 +53,20 @@ class AlertService:
         # Expire any lapsed snoozes first
         self.check_and_expire_snoozes(patient_id)
 
-        # Check for alert within cooldown window
-        # Cooldown must consider acknowledged/snoozed alerts as well as open ones
+        # Cooldown check: account for open, acknowledged, and snoozed alerts
         cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.alert_cooldown_hours)
+        now_utc = datetime.now(timezone.utc)
         recent_alert = self.db.execute(
             select(Alert).where(
                 Alert.patient_id == patient_id,
-                Alert.created_at >= cooldown_cutoff,
+                (Alert.created_at >= cooldown_cutoff) | (Alert.snoozed_until > now_utc),
                 Alert.status.in_(["open", "acknowledged", "snoozed"]),
             )
         ).scalars().first()
 
         if recent_alert:
             logger.info(
-                f"Suppressed duplicate alert for patient {patient_id} within {settings.alert_cooldown_hours}h cooldown "
+                f"Suppressed duplicate alert for patient {patient_id} within cooldown/snooze window "
                 f"(recent alert {recent_alert.alert_id} has status '{recent_alert.status}')."
             )
             return None
@@ -142,7 +142,9 @@ class AlertService:
         snooze_hours: float = 4.0,
         reason: Optional[str] = None,
     ) -> Optional[Alert]:
-        """Snooze alert with specific duration and documented rationale."""
+        if not reason or not reason.strip():
+            raise ValueError("A documented clinical reason is required to snooze an alert.")
+
         alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
         if not alert:
             return None

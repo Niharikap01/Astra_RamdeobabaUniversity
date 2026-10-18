@@ -176,12 +176,16 @@ def snooze_alert(
 ):
     """Snooze a clinical alert with duration and documented reason."""
     alert_svc = AlertService(db)
-    alert = alert_svc.snooze_alert(
-        alert_id=alert_id,
-        clinician_name=payload.clinician_name,
-        snooze_hours=payload.snooze_hours,
-        reason=payload.reason,
-    )
+    try:
+        alert = alert_svc.snooze_alert(
+            alert_id=alert_id,
+            clinician_name=payload.clinician_name,
+            snooze_hours=payload.snooze_hours,
+            reason=payload.reason,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     if not alert:
         raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found.")
     return alert

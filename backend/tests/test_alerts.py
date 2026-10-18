@@ -77,8 +77,9 @@ def test_alert_cooldown_open_acknowledged_snoozed(db_session, seeded_patient):
     dup_snooze = alert_svc.evaluate_and_create_alert(seeded_patient.patient_id, pred_high)
     assert dup_snooze is None, "Cooldown must consider snoozed alerts as well as open ones"
 
-    # Case D: Past cooldown window (> 24h), a new alert CAN fire
+    # Case D: Past cooldown window (> 24h) and expired snooze, a new alert CAN fire
     first_alert.created_at = now - timedelta(hours=settings.alert_cooldown_hours + 1)
+    first_alert.snoozed_until = now - timedelta(hours=settings.alert_cooldown_hours + 1)
     db_session.commit()
 
     new_alert_after_cooldown = alert_svc.evaluate_and_create_alert(seeded_patient.patient_id, pred_high)
@@ -129,6 +130,26 @@ def test_snooze_duration_stored_and_expires(db_session, seeded_patient):
     assert expired_count == 1
     assert snoozed.status == "open"
     assert snoozed.snoozed_until is None
+
+
+def test_snooze_requires_reason(db_session, seeded_patient, test_client):
+    """Verify snooze fails with 422 or 400 if reason is omitted or empty."""
+    alert = Alert(
+        patient_id=seeded_patient.patient_id,
+        risk_level="High",
+        probability=0.75,
+        message="Test alert for snooze reason requirement",
+        created_at=datetime.now(timezone.utc),
+        status="open",
+    )
+    db_session.add(alert)
+    db_session.commit()
+
+    res = test_client.post(
+        f"/api/alerts/{alert.alert_id}/snooze",
+        json={"clinician_name": "Dr. Clinician", "snooze_hours": 2.0, "reason": ""},
+    )
+    assert res.status_code in [400, 422]
 
 
 def test_alerts_fire_in_simulation_run(db_session, seeded_patient):

@@ -320,3 +320,50 @@ def test_websocket_stream(test_client, seeded_patient):
         pong = ws.receive_text()
         assert pong == "pong"
         ws.send_text("close")
+
+
+def test_readings_series_endpoint(test_client, seeded_patient):
+    """GET /api/patients/{id}/readings-series returns Kolkata timestamps and estimated personal baselines."""
+    res = test_client.get(f"/api/patients/{seeded_patient.patient_id}/readings-series?days=30")
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["patient_id"] == seeded_patient.patient_id
+    assert data["days"] == 30
+    assert data["timezone"] == "Asia/Kolkata"
+    assert "baseline_30d" in data
+    assert "sbp" in data["baseline_30d"]
+    assert "sleep_duration" in data["baseline_30d"]
+
+    assert len(data["series"]) == 30
+    first_pt = data["series"][0]
+    assert "+05:30" in first_pt["timestamp"]
+    for key in ["sbp", "dbp", "sleep_duration", "sleep_efficiency", "hrv_rmssd", "resting_hr", "steps", "medication_taken"]:
+        assert key in first_pt
+
+
+def test_whatif_endpoint_fields(test_client, seeded_patient):
+    """POST /api/patients/{id}/what-if returns delta, new_band, and effect_note."""
+    res = test_client.post(
+        f"/api/patients/{seeded_patient.patient_id}/what-if",
+        json={"sleep_hours": 8.0, "medication_taken": True, "steps": 9000},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "baseline_probability" in data
+    assert "new_probability" in data
+    assert "delta" in data
+    assert "new_band" in data
+    assert "effect_note" in data
+    assert "changed_features" in data
+    assert "sleep_hours" in data["changed_features"]
+    assert "medication_taken" in data["changed_features"]
+
+
+def test_smart_ring_coverage_not_zero(db_session, seeded_patient):
+    """Ensure data coverage computation does not truncate smart ring morning readings to 0%."""
+    from backend.app.services.fusion_service import FusionService
+    fusion_svc = FusionService(db_session)
+    overall_cov, per_source = fusion_svc.compute_data_coverage(seeded_patient.patient_id, days_lookback=1)
+    assert per_source["smart_ring"] > 0.0
+    assert overall_cov > 0.0

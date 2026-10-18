@@ -7,12 +7,27 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
-from backend.app.schemas import SensorReadingCreate, SensorReadingResponse
+from backend.app.schemas import ReadingsSeriesResponse, SensorReadingCreate, SensorReadingResponse
 from backend.app.services.ehr_service import EHRService
 from backend.app.services.sensor_service import SensorService
 from backend.app.services.twin_service import TwinService
 
 router = APIRouter(prefix="/api/patients", tags=["Sensor Readings"])
+
+
+@router.get("/{patient_id}/readings-series", response_model=ReadingsSeriesResponse)
+def get_readings_series(
+    patient_id: str,
+    days: int = Query(default=30, ge=1, le=120),
+    db: Session = Depends(get_db),
+):
+    """Retrieve stored readings series in Asia/Kolkata timezone with personal 30-day baseline."""
+    ehr = EHRService(db)
+    if not ehr.get_patient(patient_id):
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
+
+    sensor_svc = SensorService(db)
+    return sensor_svc.get_readings_series(patient_id, days=days)
 
 
 @router.get("/{patient_id}/sensor-readings", response_model=List[SensorReadingResponse])

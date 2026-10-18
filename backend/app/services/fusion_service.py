@@ -117,8 +117,10 @@ class FusionService:
         return pd.DataFrame(daily_records)
 
     def compute_data_coverage(self, patient_id: str, days_lookback: int = 7) -> Tuple[float, Dict[str, float]]:
-        """Compute honest data coverage percentages from stored readings over lookback window."""
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_lookback)
+        # Anchor cutoff to beginning of calendar day to prevent time-of-day truncation of morning 07:00 wearable readings
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_lookback)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         readings = list(self.db.execute(
             select(SensorReading)
             .where(
