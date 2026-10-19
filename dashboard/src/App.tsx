@@ -107,6 +107,10 @@ export default function App() {
 
   // Initial Load: Cohort & Thresholds
   const loadInitialData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setIsOffline(false);
     try {
@@ -129,7 +133,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedPatientId]);
+  }, [selectedPatientId, isAuthenticated]);
 
   useEffect(() => {
     loadInitialData();
@@ -298,6 +302,15 @@ export default function App() {
   // Coverage check
   const dataCoverage = riskHorizon?.data_coverage_pct ?? patientProfile?.data_coverage_pct ?? 100;
   const isCoverageWithheld = dataCoverage < 50;
+
+  // Login gate: never render clinical data (or fire API calls) before sign-in
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#0b0f19]">
+        <LoginModal />
+      </div>
+    );
+  }
 
   return (
     <div

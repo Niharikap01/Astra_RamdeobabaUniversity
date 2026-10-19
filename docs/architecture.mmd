@@ -1,0 +1,23 @@
+flowchart LR
+  subgraph Sources[Synthetic data sources]
+    EHR[EHR simulator]
+    WEAR[Wearable simulator: sleep, HRV, RHR, steps, adherence]
+    CUFF[Home BP cuff: ground truth]
+  end
+  SIM[Scenario runner / live sensor simulator] --> ING
+  EHR --> ING
+  WEAR --> SIM
+  CUFF --> SIM
+  ING[Ingestion API + SQLite UTC] --> FUS[Fusion + feature engineering]
+  FUS --> ML[LightGBM + isotonic calibration]
+  ML --> TWIN[Digital twin service]
+  TWIN --> SHAP[SHAP explanations]
+  TWIN --> WIF[What-If service]
+  TWIN --> FP[Sleep fingerprint]
+  TWIN --> ALR[Alert service]
+  TWIN --> WS[WebSocket + REST, JWT RBAC]
+  SHAP --> WS
+  WIF --> WS
+  FP --> WS
+  ALR --> WS
+  WS --> DASH[React clinician dashboard]
