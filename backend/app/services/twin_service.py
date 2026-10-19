@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
@@ -174,7 +175,7 @@ class TwinService:
         return twin_state
 
     def build_risk_horizon(self, patient_id: str) -> Optional[RiskHorizonResponse]:
-        """Construct the 24-hour synchronized Risk Horizon trajectory using stored telemetry."""
+        """Construct the synchronized Risk Horizon trajectory using stored telemetry."""
         from zoneinfo import ZoneInfo
         import math
         from backend.app.models import SensorReading
@@ -195,114 +196,119 @@ class TwinService:
             base_risk_pct = round(prob * 100.0, 1)
 
         # 1. Compute honest data coverage from stored readings
-        overall_cov, per_source = self.fusion_service.compute_data_coverage(patient_id, days_lookback=1)
+        overall_cov, per_source = self.fusion_service.compute_data_coverage(patient_id, days_lookback=14)
 
-        # 2. Query stored sensor readings and past predictions in the last 24h
         now_utc = datetime.now(timezone.utc)
-        start_24h_utc = now_utc - timedelta(hours=12)
+        start_14d_utc = now_utc - timedelta(days=14, hours=2)
 
-        readings_24h = list(self.db.execute(
-            select(SensorReading)
-            .where(
-                SensorReading.patient_id == patient_id,
-                SensorReading.recorded_at >= start_24h_utc,
-                SensorReading.recorded_at <= now_utc,
-            )
-            .order_by(SensorReading.recorded_at.asc())
-        ).scalars().all())
-
+        # 2. Fetch stored daily predictions for the last 14 days
         past_preds = list(self.db.execute(
             select(Prediction)
             .where(
                 Prediction.patient_id == patient_id,
-                Prediction.generated_at >= start_24h_utc,
+                Prediction.generated_at >= start_14d_utc,
                 Prediction.generated_at <= now_utc,
             )
             .order_by(Prediction.generated_at.asc())
         ).scalars().all())
 
+        preds_by_day = {}
+        for p in past_preds:
+            p_dt = p.generated_at if p.generated_at.tzinfo is not None else p.generated_at.replace(tzinfo=timezone.utc)
+            day_str = p_dt.strftime("%Y-%m-%d")
+            preds_by_day[day_str] = p
+
+        # 3. Fetch sensor readings for the last 14 days
+        readings_14d = list(self.db.execute(
+            select(SensorReading)
+            .where(
+                SensorReading.patient_id == patient_id,
+                SensorReading.recorded_at >= start_14d_utc,
+                SensorReading.recorded_at <= now_utc,
+            )
+            .order_by(SensorReading.recorded_at.asc())
+        ).scalars().all())
+
+        readings_by_day = defaultdict(list)
+        for r in readings_14d:
+            r_dt = r.recorded_at if r.recorded_at.tzinfo is not None else r.recorded_at.replace(tzinfo=timezone.utc)
+            readings_by_day[r_dt.strftime("%Y-%m-%d")].append(r)
+
         series_points: List[RiskHorizonPoint] = []
 
-        for offset in range(-12, 13):
-            t_point_utc = now_utc + timedelta(hours=offset)
-            t_point_kolkata = t_point_utc.astimezone(kolkata_tz)
-            is_pred = offset > 0
+        # Iterate past 14 days (d=14 down to 1)
+        for d in range(14, 0, -1):
+            day_date = (now_utc - timedelta(days=d)).date()
+            day_str = day_date.strftime("%Y-%m-%d")
+            day_readings = readings_by_day.get(day_str, [])
 
-            # Match readings within +/- 30 minutes of this hour
-            window_start = t_point_utc - timedelta(minutes=30)
-            window_end = t_point_utc + timedelta(minutes=30)
-            slot_readings = []
-            for r in readings_24h:
-                r_ts = r.recorded_at if r.recorded_at.tzinfo is not None else r.recorded_at.replace(tzinfo=timezone.utc)
-                if window_start <= r_ts <= window_end:
-                    slot_readings.append(r)
+            pred = preds_by_day.get(day_str)
+            if pred is not None:
+                r_val = round(pred.probability * 100.0, 1)
+                pred_dt = pred.generated_at if pred.generated_at.tzinfo is not None else pred.generated_at.replace(tzinfo=timezone.utc)
+            else:
+                r_val = base_risk_pct
+                pred_dt = datetime.combine(day_date, datetime.min.time()).replace(hour=22, tzinfo=timezone.utc)
 
-            # Measured BP
-            sbp_r = next((r.value for r in slot_readings if r.sensor_type == "home_sbp"), None)
-            dbp_r = next((r.value for r in slot_readings if r.sensor_type == "home_dbp"), None)
+            t_point_kolkata = pred_dt.astimezone(kolkata_tz)
+            hour_offset = round((pred_dt - now_utc).total_seconds() / 3600)
+
+            # Measured BP on this day (diamonds)
+            sbp_r = next((r.value for r in reversed(day_readings) if r.sensor_type == "home_sbp"), None)
+            dbp_r = next((r.value for r in reversed(day_readings) if r.sensor_type == "home_dbp"), None)
             has_bp = sbp_r is not None
 
-            # Medication event
-            med_r = next((r for r in slot_readings if r.sensor_type == "medication_taken"), None)
+            # Medication event on this day (capsules)
+            med_r = next((r for r in day_readings if r.sensor_type == "medication_taken"), None)
             has_med = med_r is not None and med_r.value >= 1.0
             med_name = (patient.archetype.replace("_", " ").title() + " Regimen") if has_med else None
 
-            # Sleep window detection from recorded sensor or hour
-            sleep_r = next((r for r in slot_readings if r.sensor_type in ("sleep_duration", "deep_sleep", "rem_sleep")), None)
-            hour_k = t_point_kolkata.hour
-            is_sleep = sleep_r is not None or (23 <= hour_k or hour_k < 7)
-            sleep_st = None
-            if is_sleep:
-                if 0 <= hour_k <= 2:
-                    sleep_st = "deep"
-                elif 3 <= hour_k <= 5:
-                    sleep_st = "rem"
-                else:
-                    sleep_st = "light"
-
-            # Risk trajectory
-            if not is_pred:
-                # Find closest stored prediction if any
-                closest_pred = None
-                min_diff = timedelta(hours=2)
-                for p in past_preds:
-                    p_ts = p.generated_at if p.generated_at.tzinfo is not None else p.generated_at.replace(tzinfo=timezone.utc)
-                    diff = abs(p_ts - t_point_utc)
-                    if diff < min_diff:
-                        min_diff = diff
-                        closest_pred = p
-
-                if closest_pred is not None:
-                    r_val = round(closest_pred.probability * 100.0, 1)
-                else:
-                    r_val = base_risk_pct
-
-                conf_width = 3.5
-                is_missing = len(slot_readings) == 0 and offset < 0
-            else:
-                r_val = base_risk_pct
-                conf_width = min(22.0, 5.0 + (offset * 1.2))
-                is_missing = False
+            # Sleep window on this day
+            sleep_r = next((r for r in day_readings if r.sensor_type in ("sleep_duration", "deep_sleep")), None)
+            is_sleep = sleep_r is not None
 
             series_points.append(
                 RiskHorizonPoint(
                     timestamp=t_point_kolkata.isoformat(),
-                    hour_offset=offset,
-                    is_predicted=is_pred,
-                    risk_pct=round(r_val, 1),
-                    uncertainty_lower=round(max(0.0, r_val - conf_width), 1),
-                    uncertainty_upper=round(min(100.0, r_val + conf_width), 1),
+                    hour_offset=hour_offset,
+                    is_predicted=False,
+                    risk_pct=r_val,
+                    uncertainty_lower=None,
+                    uncertainty_upper=None,
                     is_sleep_window=is_sleep,
-                    sleep_stage=sleep_st,
+                    sleep_stage="light" if is_sleep else None,
                     has_bp_reading=has_bp,
                     measured_sbp=round(sbp_r, 1) if sbp_r is not None else None,
                     measured_dbp=round(dbp_r, 1) if dbp_r is not None else None,
                     predicted_sbp=None,
                     has_medication_event=has_med,
                     medication_name=med_name,
-                    is_missing_data=is_missing,
+                    is_missing_data=len(day_readings) == 0,
                 )
             )
+
+        # 4. Future = single next-24h prediction
+        fut_dt = now_utc + timedelta(hours=24)
+        fut_kolkata = fut_dt.astimezone(kolkata_tz)
+        series_points.append(
+            RiskHorizonPoint(
+                timestamp=fut_kolkata.isoformat(),
+                hour_offset=24,
+                is_predicted=True,
+                risk_pct=base_risk_pct,
+                uncertainty_lower=None,
+                uncertainty_upper=None,
+                is_sleep_window=False,
+                sleep_stage=None,
+                has_bp_reading=False,
+                measured_sbp=None,
+                measured_dbp=None,
+                predicted_sbp=None,
+                has_medication_event=False,
+                medication_name=None,
+                is_missing_data=False,
+            )
+        )
 
         # Peak risk window calculation
         pred_points = [p for p in series_points if p.is_predicted]
@@ -311,7 +317,7 @@ class TwinService:
             start=peak_pt.timestamp,
             end=(datetime.fromisoformat(peak_pt.timestamp) + timedelta(hours=2)).isoformat(),
             peak_risk_pct=peak_pt.risk_pct,
-            label="Anticipated Vulnerability Window",
+            label="Next-24h Episode Forecast",
         )
 
         # Morning surge magnitude computed honestly from features or 0.0
@@ -322,22 +328,10 @@ class TwinService:
         else:
             surge_mag = 0.0
 
-        if latest_pred.risk_level == "High":
-            summary = (
-                f"Elevated 24-hour hypertensive episode risk ({base_risk_pct:.0f}%). "
-                f"Peak vulnerability ({peak_pt.risk_pct:.0f}%) projected over the next 12-hour horizon. "
-                f"Associated with acute sleep deficit and diminished vagal HRV buffering."
-            )
-        elif latest_pred.risk_level == "Moderate":
-            summary = (
-                f"Moderate 24-hour hypertensive risk ({base_risk_pct:.0f}%). "
-                f"Morning surge differential ({surge_mag:+.1f} mmHg) monitored against personal baseline."
-            )
-        else:
-            summary = (
-                f"Low 24-hour hypertensive episode risk ({base_risk_pct:.0f}%). "
-                f"Stable autonomic tone and hemodynamic parameters observed."
-            )
+        summary = (
+            f"14-day longitudinal model estimates with next-24h episode forecast ({base_risk_pct:.0f}%). "
+            f"Surge differential: {surge_mag:+.1f} mmHg. Confidence band: interval not available."
+        )
 
         return RiskHorizonResponse(
             patient_id=patient_id,
@@ -349,6 +343,7 @@ class TwinService:
             nocturnal_dipping_pct=None,
             morning_surge_magnitude=surge_mag,
             risk_summary_text=summary,
+            confidence_interval_note="interval not available",
         )
 
     def get_why_risk_changed(self, patient_id: str) -> Optional[WhyRiskChangedResponse]:

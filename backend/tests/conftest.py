@@ -46,8 +46,48 @@ def db_session(setup_test_db):
 
 
 @pytest.fixture
-def test_client(db_session):
-    """Provide FastAPI test client with injected test database session."""
+def test_clinician(db_session):
+    """Provide a seeded test clinician user."""
+    from backend.app.auth import hash_password
+    from backend.app.models import User
+    user = User(
+        id="user-test-clinician-1",
+        username="dr_clinician",
+        hashed_password=hash_password("nightwatch2026"),
+        role="clinician",
+        full_name="Dr. Test Clinician, MD",
+    )
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+@pytest.fixture
+def test_client(db_session, test_clinician):
+    """Provide FastAPI test client with injected test database session and authenticated user."""
+    from backend.app.auth import get_current_user
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    def override_get_current_user():
+        return test_clinician
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    with TestClient(app) as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def raw_test_client(db_session):
+    """Provide FastAPI test client without default auth override for auth flow testing."""
     def override_get_db():
         try:
             yield db_session

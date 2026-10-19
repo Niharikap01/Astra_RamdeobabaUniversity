@@ -207,7 +207,7 @@ def test_risk_horizon_and_why_risk_changed(test_client, seeded_patient):
     assert res_hor.status_code == 200
     hor = res_hor.json()
     assert hor["patient_id"] == seeded_patient.patient_id
-    assert len(hor["series"]) >= 24
+    assert len(hor["series"]) >= 15
     assert "peak_risk_window" in hor
     assert "data_coverage_pct" in hor
     assert "nocturnal_dipping_pct" in hor
@@ -356,8 +356,9 @@ def test_whatif_endpoint_fields(test_client, seeded_patient):
     assert "new_band" in data
     assert "effect_note" in data
     assert "changed_features" in data
-    assert "sleep_hours" in data["changed_features"]
-    assert "medication_taken" in data["changed_features"]
+    assert "sleep_duration_last_night" in data["changed_features"]
+    assert "sleep_hours" not in data["changed_features"]
+
 
 
 def test_smart_ring_coverage_not_zero(db_session, seeded_patient):

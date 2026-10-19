@@ -6,7 +6,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from backend.app.auth import get_current_user
 from backend.app.database import get_db
+from backend.app.models import User
 from backend.app.schemas import ReadingsSeriesResponse, SensorReadingCreate, SensorReadingResponse
 from backend.app.services.ehr_service import EHRService
 from backend.app.services.sensor_service import SensorService
@@ -19,6 +21,7 @@ router = APIRouter(prefix="/api/patients", tags=["Sensor Readings"])
 def get_readings_series(
     patient_id: str,
     days: int = Query(default=30, ge=1, le=120),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Retrieve stored readings series in Asia/Kolkata timezone with personal 30-day baseline."""
@@ -35,6 +38,7 @@ def get_sensor_readings(
     patient_id: str,
     sensor_type: Optional[str] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Fetch raw or filtered historical sensor and home cuff readings."""
@@ -50,6 +54,7 @@ def get_sensor_readings(
 async def post_sensor_reading(
     patient_id: str,
     payload: SensorReadingCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Idempotently ingest a wearable or cuff reading.

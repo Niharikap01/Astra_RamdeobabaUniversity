@@ -5,6 +5,7 @@
 
 import {
   AlertResponse,
+  AuthUser,
   DigitalTwinResponse,
   OperatingThresholdsResponse,
   PatientProfileDetail,
@@ -14,6 +15,7 @@ import {
   SensorReadingItem,
   SimulationStatusResponse,
   SleepFingerprintData,
+  TokenResponse,
   WhatIfRequest,
   WhatIfResponse,
   WhyRiskChangedResponse,
@@ -22,16 +24,58 @@ import {
 // Prefer relative path which Vite proxies to localhost:8000, or direct env variable
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
+const TOKEN_KEY = "nightwatch_auth_token";
+const USER_KEY = "nightwatch_auth_user";
+
+export function getAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string | null): void {
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
+
+export function getStoredUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user: AuthUser | null): void {
+  if (user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(USER_KEY);
+  }
+}
+
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string> || {}),
+  };
+
+  if (token && !headers["Authorization"]) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_BASE}${url}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers || {}),
-    },
+    headers,
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent("nightwatch:unauthorized"));
+    }
     const errorText = await res.text();
     throw new Error(`API Error [${res.status}]: ${errorText || res.statusText}`);
   }
@@ -125,6 +169,12 @@ export const api = {
       body: JSON.stringify(request),
     }),
 
+  postWhatIf: (patientId: string, request: WhatIfRequest) =>
+    fetchJson<WhatIfResponse>(`/api/patients/${patientId}/what-if`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+
   getSimulationStatus: () =>
     fetchJson<SimulationStatusResponse>(`/api/simulation/status`),
 
@@ -145,12 +195,21 @@ export const api = {
       body: JSON.stringify({ scenario }),
     }),
 
-  // Health
+  // Health & System
   getHealth: () => fetchJson<{ status: string }>(`/health`),
+
+  // Authentication & RBAC
+  login: (username: string, password: string) =>
+    fetchJson<TokenResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+
+  getMe: () => fetchJson<AuthUser>("/api/auth/me"),
 };
 
 /**
- * WebSocket Connection with automatic reconnection and live twin stream
+ * WebSocket Connection with automatic reconnection, JWT token injection, and live twin stream
  */
 export function createTwinWebSocket(
   patientId: string,
@@ -166,8 +225,9 @@ export function createTwinWebSocket(
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    // Connect through Vite proxy /ws/twin/{id} or direct 8000
-    const wsUrl = `${protocol}//${host}/ws/twin/${patientId}`;
+    const token = getAuthToken();
+    // Connect through Vite proxy /ws/twin/{id} or direct 8000 with JWT token
+    const wsUrl = `${protocol}//${host}/ws/twin/${patientId}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 
     try {
       ws = new WebSocket(wsUrl);

@@ -128,52 +128,52 @@
         "std_pr_auc": 0.0844
       },
       "ehr_plus_bp": {
-        "mean_roc_auc": 0.7544,
-        "std_roc_auc": 0.024,
-        "mean_pr_auc": 0.4686,
-        "std_pr_auc": 0.0658
+        "mean_roc_auc": 0.7493,
+        "std_roc_auc": 0.0286,
+        "mean_pr_auc": 0.463,
+        "std_pr_auc": 0.0721
       },
       "ehr_bp_sleep_hrv": {
-        "mean_roc_auc": 0.7816,
-        "std_roc_auc": 0.0434,
-        "mean_pr_auc": 0.4859,
-        "std_pr_auc": 0.0388
+        "mean_roc_auc": 0.781,
+        "std_roc_auc": 0.0439,
+        "mean_pr_auc": 0.5247,
+        "std_pr_auc": 0.0589
       },
       "full": {
         "mean_roc_auc": 0.7844,
-        "std_roc_auc": 0.0404,
-        "mean_pr_auc": 0.4929,
-        "std_pr_auc": 0.0288
+        "std_roc_auc": 0.0406,
+        "mean_pr_auc": 0.5026,
+        "std_pr_auc": 0.0273
       }
     },
     "paired_differences": {
       "tier2_vs_tier1": {
         "label": "Tier 2 (EHR+BP) vs Tier 1 (EHR)",
-        "roc_mean": 0.1248,
-        "roc_sd": 0.0661,
+        "roc_mean": 0.1196,
+        "roc_sd": 0.059,
         "roc_wins": "5/5",
-        "pr_mean": 0.0472,
-        "pr_sd": 0.1402,
+        "pr_mean": 0.0416,
+        "pr_sd": 0.1487,
         "pr_wins": "4/5",
         "suggestive_only": "False"
       },
       "tier3_vs_tier2": {
         "label": "Tier 3 (+Sleep/HRV) vs Tier 2 (EHR+BP)",
-        "roc_mean": 0.0271,
-        "roc_sd": 0.0318,
+        "roc_mean": 0.0317,
+        "roc_sd": 0.0235,
         "roc_wins": "4/5",
-        "pr_mean": 0.0173,
-        "pr_sd": 0.0443,
-        "pr_wins": "4/5",
-        "suggestive_only": "True"
+        "pr_mean": 0.0617,
+        "pr_sd": 0.1227,
+        "pr_wins": "3/5",
+        "suggestive_only": "False"
       },
       "tier4_vs_tier3": {
         "label": "Tier 4 (Full Twin) vs Tier 3 (+Sleep/HRV)",
-        "roc_mean": 0.0029,
-        "roc_sd": 0.0061,
-        "roc_wins": "3/5",
-        "pr_mean": 0.007,
-        "pr_sd": 0.0113,
+        "roc_mean": 0.0035,
+        "roc_sd": 0.0063,
+        "roc_wins": "2/5",
+        "pr_mean": -0.022,
+        "pr_sd": 0.0676,
         "pr_wins": "2/5",
         "suggestive_only": true
       }

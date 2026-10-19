@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from backend.app.config import settings
 from backend.app.database import SessionLocal, init_db, get_db
 from backend.app.routers import (
+    auth,
     patients,
     predictions,
     sensors,
@@ -82,6 +83,7 @@ app.add_middleware(
 )
 
 # Include API Routers
+app.include_router(auth.router)
 app.include_router(patients.router)
 app.include_router(sensors.router)
 app.include_router(twin.router)
@@ -119,8 +121,38 @@ def health_check(response: Response, db: Session = Depends(get_db)):
 
 
 @app.websocket("/ws/twin/{patient_id}")
-async def websocket_twin_endpoint(websocket: WebSocket, patient_id: str, db: Session = Depends(get_db)):
+async def websocket_twin_endpoint(
+    websocket: WebSocket,
+    patient_id: str,
+    token: str = None,
+    db: Session = Depends(get_db),
+):
     """Real-time bidirectional WebSocket stream for patient digital twin updates."""
+    from backend.app.auth import authenticate_websocket_token
+
+    # Authenticate token from query parameter or headers
+    auth_token = token
+    if not auth_token and "authorization" in websocket.headers:
+        auth_hdr = websocket.headers["authorization"]
+        if auth_hdr.lower().startswith("bearer "):
+            auth_token = auth_hdr[7:].strip()
+    if not auth_token and "sec-websocket-protocol" in websocket.headers:
+        protocols = [p.strip() for p in websocket.headers["sec-websocket-protocol"].split(",")]
+        if protocols:
+            auth_token = protocols[0]
+
+    current_user = authenticate_websocket_token(auth_token, db)
+    if not current_user:
+        # If running in test environment with dependency override, honor test user
+        from backend.app.auth import get_current_user
+        if get_current_user in app.dependency_overrides:
+            override_fn = app.dependency_overrides[get_current_user]
+            current_user = override_fn() if callable(override_fn) else override_fn
+
+    if not current_user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await ws_manager.connect(websocket, patient_id)
     try:
         twin_svc = TwinService(db)

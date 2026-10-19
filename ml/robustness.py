@@ -315,6 +315,7 @@ def run_group_kfold_pipeline(
 def run_sparse_bp_experiment(
     records_df: pd.DataFrame,
     patients_df: pd.DataFrame,
+    base_df: Optional[pd.DataFrame] = None,
     seeds: List[int] = EVALUATION_SEEDS,
 ) -> Dict[str, Any]:
     """Evaluate all four tiers when home BP cuff readings are available only 2-3 days per week.
@@ -322,63 +323,185 @@ def run_sparse_bp_experiment(
     """
     logger.info(f"Running Sparse-BP Experiment (2-3 readings/week) across {len(seeds)} independent seeds...")
     patient_lookup = {p["patient_id"]: p for p in patients_df.to_dict(orient="records")}
-    feat_pipe = FeatureEngineeringPipeline(feature_subset="full")
     prep = DataPreparationPipeline(seed=42)
 
     tier_results = {t: {"roc": [], "pr": []} for t in TIER_NAMES}
+    records_grouped = {pid: grp.sort_values("day_index").reset_index(drop=True) for pid, grp in records_df.groupby("patient_id")}
 
     for s_idx, s in enumerate(seeds):
         rng = np.random.default_rng(s)
-        sparse_rows = []
 
-        for pid, group in records_df.groupby("patient_id"):
-            static_info = patient_lookup[pid]
-            group_sorted = group.sort_values("day_index").reset_index(drop=True)
-            n_days = len(group_sorted)
+        if base_df is not None:
+            sparse_df = base_df.copy()
+            n_rows = len(sparse_df)
+            sbp_latest = np.zeros(n_rows, dtype=float)
+            dbp_latest = np.zeros(n_rows, dtype=float)
+            sbp_mean_3d = np.zeros(n_rows, dtype=float)
+            sbp_mean_7d = np.zeros(n_rows, dtype=float)
+            sbp_std_7d = np.zeros(n_rows, dtype=float)
+            dbp_mean_7d = np.zeros(n_rows, dtype=float)
+            sbp_slope_7d = np.zeros(n_rows, dtype=float)
+            morning_sbp_mean_7d = np.zeros(n_rows, dtype=float)
+            evening_sbp_mean_7d = np.zeros(n_rows, dtype=float)
+            morning_minus_evening_sbp = np.zeros(n_rows, dtype=float)
+            days_since_last_bp = np.zeros(n_rows, dtype=float)
+            bp_reading_count_7d = np.zeros(n_rows, dtype=float)
+            sbp_dev_30d = np.zeros(n_rows, dtype=float)
+            dbp_dev_30d = np.zeros(n_rows, dtype=float)
+            bp_var_ratio = np.zeros(n_rows, dtype=float)
 
-            # Mask ~2.5 days per week independently per seed
-            measured_days = set()
-            for w_start in range(0, n_days, 7):
-                chunk = list(range(w_start, min(n_days, w_start + 7)))
-                k = rng.choice([2, 3])
-                k = min(k, len(chunk))
-                chosen = rng.choice(chunk, size=k, replace=False)
-                measured_days.update(chosen)
+            for pid, group_sorted in records_grouped.items():
+                static_info = patient_lookup[pid]
+                b_sbp = float(static_info.get("baseline_sbp", 125.0))
+                b_dbp = float(static_info.get("baseline_dbp", 80.0))
+                n_days = len(group_sorted)
 
-            # Forward-fill unmeasured BP readings
-            hist_sparse = group_sorted.copy()
-            last_m_sbp = static_info.get("baseline_sbp", 125.0)
-            last_m_dbp = static_info.get("baseline_dbp", 80.0)
-            last_e_sbp = static_info.get("baseline_sbp", 125.0)
-            last_e_dbp = static_info.get("baseline_dbp", 80.0)
+                measured_days = set()
+                for w_start in range(0, n_days, 7):
+                    chunk = list(range(w_start, min(n_days, w_start + 7)))
+                    k = min(int(rng.choice([2, 3])), len(chunk))
+                    measured_days.update(rng.choice(chunk, size=k, replace=False))
 
-            for i in range(len(hist_sparse)):
-                d_idx = hist_sparse.iloc[i]["day_index"]
-                if d_idx in measured_days:
-                    last_m_sbp = hist_sparse.iloc[i]["morning_sbp"]
-                    last_m_dbp = hist_sparse.iloc[i]["morning_dbp"]
-                    last_e_sbp = hist_sparse.iloc[i]["evening_sbp"]
-                    last_e_dbp = hist_sparse.iloc[i]["evening_dbp"]
-                else:
-                    hist_sparse.at[i, "morning_sbp"] = last_m_sbp
-                    hist_sparse.at[i, "morning_dbp"] = last_m_dbp
-                    hist_sparse.at[i, "evening_sbp"] = last_e_sbp
-                    hist_sparse.at[i, "evening_dbp"] = last_e_dbp
+                m_sbp = group_sorted["morning_sbp"].values.copy()
+                m_dbp = group_sorted["morning_dbp"].values.copy()
+                e_sbp = group_sorted["evening_sbp"].values.copy()
+                e_dbp = group_sorted["evening_dbp"].values.copy()
 
-            for d_idx in range(14, len(hist_sparse) - 1):
-                sub_history = hist_sparse[hist_sparse["day_index"] <= d_idx]
-                feat_dict = feat_pipe.compute_features_from_history(
-                    static_info=static_info,
-                    history_df=sub_history,
-                    current_day_index=d_idx + 1,
-                )
-                curr_row = group_sorted.iloc[d_idx]
-                feat_dict["patient_id"] = pid
-                feat_dict["day_index"] = d_idx
-                feat_dict["target"] = int(curr_row["hypertensive_episode_next_day"])
-                sparse_rows.append(feat_dict)
+                last_m_s, last_m_d, last_e_s, last_e_d = b_sbp, b_dbp, b_sbp, b_dbp
+                last_m_day = -1
+                days_since_arr = np.zeros(n_days, dtype=float)
+                is_meas = np.zeros(n_days, dtype=bool)
 
-        sparse_df = pd.DataFrame(sparse_rows)
+                for i in range(n_days):
+                    d_idx = group_sorted["day_index"].iloc[i]
+                    if d_idx in measured_days:
+                        last_m_s = m_sbp[i]
+                        last_m_d = m_dbp[i]
+                        last_e_s = e_sbp[i]
+                        last_e_d = e_dbp[i]
+                        last_m_day = d_idx
+                        is_meas[i] = True
+                    else:
+                        m_sbp[i] = last_m_s
+                        m_dbp[i] = last_m_d
+                        e_sbp[i] = last_e_s
+                        e_dbp[i] = last_e_d
+                    days_since_arr[i] = float(max(0, d_idx - last_m_day)) if last_m_day >= 0 else float(d_idx)
+
+                p_indices = np.where(sparse_df["patient_id"].values == pid)[0]
+                day_indices = sparse_df["day_index"].values[p_indices]
+
+                for row_idx, t in zip(p_indices, day_indices):
+                    t = int(t)
+                    sbp_latest[row_idx] = e_sbp[t]
+                    dbp_latest[row_idx] = e_dbp[t]
+
+                    s3_m = m_sbp[max(0, t-2):t+1]
+                    s3_e = e_sbp[max(0, t-2):t+1]
+                    s3 = np.concatenate([s3_m, s3_e])
+                    sbp_mean_3d[row_idx] = float(np.mean(s3))
+
+                    s7_m = m_sbp[max(0, t-6):t+1]
+                    s7_e = e_sbp[max(0, t-6):t+1]
+                    d7_m = m_dbp[max(0, t-6):t+1]
+                    d7_e = e_dbp[max(0, t-6):t+1]
+                    s7 = np.concatenate([s7_m, s7_e])
+                    d7 = np.concatenate([d7_m, d7_e])
+
+                    s7_mean = float(np.mean(s7))
+                    s7_std = float(np.std(s7, ddof=1)) if len(s7) > 1 else 3.5
+                    d7_mean = float(np.mean(d7))
+
+                    sbp_mean_7d[row_idx] = s7_mean
+                    sbp_std_7d[row_idx] = s7_std
+                    dbp_mean_7d[row_idx] = d7_mean
+
+                    daily_7d = (s7_m + s7_e) / 2.0
+                    if len(daily_7d) >= 3:
+                        x_v = np.arange(len(daily_7d))
+                        slp, _ = np.polyfit(x_v, daily_7d, 1)
+                        sbp_slope_7d[row_idx] = float(slp)
+                    else:
+                        sbp_slope_7d[row_idx] = 0.0
+
+                    m7_mean = float(np.mean(s7_m))
+                    e7_mean = float(np.mean(s7_e))
+                    morning_sbp_mean_7d[row_idx] = m7_mean
+                    evening_sbp_mean_7d[row_idx] = e7_mean
+                    morning_minus_evening_sbp[row_idx] = m7_mean - e7_mean
+                    days_since_last_bp[row_idx] = days_since_arr[t]
+                    bp_reading_count_7d[row_idx] = float(np.sum(is_meas[max(0, t-6):t+1])) * 2.0
+
+                    sbp_dev_30d[row_idx] = s7_mean - b_sbp
+                    dbp_dev_30d[row_idx] = d7_mean - b_dbp
+
+                    s30_m = m_sbp[max(0, t-29):t+1]
+                    s30_e = e_sbp[max(0, t-29):t+1]
+                    s30 = np.concatenate([s30_m, s30_e])
+                    std30 = float(np.std(s30, ddof=1)) if len(s30) > 1 else 3.5
+                    bp_var_ratio[row_idx] = (s7_std / std30) if std30 > 0.1 else 1.0
+
+            sparse_df["sbp_latest"] = sbp_latest
+            sparse_df["dbp_latest"] = dbp_latest
+            sparse_df["sbp_mean_3d"] = sbp_mean_3d
+            sparse_df["sbp_mean_7d"] = sbp_mean_7d
+            sparse_df["sbp_std_7d"] = sbp_std_7d
+            sparse_df["dbp_mean_7d"] = dbp_mean_7d
+            sparse_df["sbp_slope_7d"] = sbp_slope_7d
+            sparse_df["morning_sbp_mean_7d"] = morning_sbp_mean_7d
+            sparse_df["evening_sbp_mean_7d"] = evening_sbp_mean_7d
+            sparse_df["morning_minus_evening_sbp"] = morning_minus_evening_sbp
+            sparse_df["days_since_last_bp_reading"] = days_since_last_bp
+            sparse_df["bp_reading_count_7d"] = bp_reading_count_7d
+            sparse_df["sbp_deviation_vs_30d_baseline"] = sbp_dev_30d
+            sparse_df["dbp_deviation_vs_30d_baseline"] = dbp_dev_30d
+            sparse_df["bp_variability_ratio_7d_vs_30d"] = bp_var_ratio
+        else:
+            sparse_rows = []
+            feat_pipe = FeatureEngineeringPipeline(feature_subset="full")
+            for pid, group in records_df.groupby("patient_id"):
+                static_info = patient_lookup[pid]
+                group_sorted = group.sort_values("day_index").reset_index(drop=True)
+                n_days = len(group_sorted)
+
+                measured_days = set()
+                for w_start in range(0, n_days, 7):
+                    chunk = list(range(w_start, min(n_days, w_start + 7)))
+                    k = min(int(rng.choice([2, 3])), len(chunk))
+                    measured_days.update(rng.choice(chunk, size=k, replace=False))
+
+                hist_sparse = group_sorted.copy()
+                last_m_sbp = static_info.get("baseline_sbp", 125.0)
+                last_m_dbp = static_info.get("baseline_dbp", 80.0)
+                last_e_sbp = static_info.get("baseline_sbp", 125.0)
+                last_e_dbp = static_info.get("baseline_dbp", 80.0)
+
+                for i in range(len(hist_sparse)):
+                    d_idx = hist_sparse.iloc[i]["day_index"]
+                    if d_idx in measured_days:
+                        last_m_sbp = hist_sparse.iloc[i]["morning_sbp"]
+                        last_m_dbp = hist_sparse.iloc[i]["morning_dbp"]
+                        last_e_sbp = hist_sparse.iloc[i]["evening_sbp"]
+                        last_e_dbp = hist_sparse.iloc[i]["evening_dbp"]
+                    else:
+                        hist_sparse.at[i, "morning_sbp"] = last_m_sbp
+                        hist_sparse.at[i, "morning_dbp"] = last_m_dbp
+                        hist_sparse.at[i, "evening_sbp"] = last_e_sbp
+                        hist_sparse.at[i, "evening_dbp"] = last_e_dbp
+
+                for d_idx in range(14, len(hist_sparse) - 1):
+                    sub_history = hist_sparse[hist_sparse["day_index"] <= d_idx]
+                    feat_dict = feat_pipe.compute_features_from_history(
+                        static_info=static_info,
+                        history_df=sub_history,
+                        current_day_index=d_idx + 1,
+                    )
+                    curr_row = group_sorted.iloc[d_idx]
+                    feat_dict["patient_id"] = pid
+                    feat_dict["day_index"] = d_idx
+                    feat_dict["target"] = int(curr_row["hypertensive_episode_next_day"])
+                    sparse_rows.append(feat_dict)
+            sparse_df = pd.DataFrame(sparse_rows)
         s_train, s_val, s_test = prep._split_by_patient(sparse_df, seed=s)
         y_test = s_test["target"].values
 
@@ -522,6 +645,7 @@ def render_publication_plots(
 
 def write_documentation_files(
     kfold_summary: Dict[str, Any],
+    pooled_metrics: Dict[str, Any],
     paired_diffs: Dict[str, Any],
     sparse_summary: Dict[str, Any],
     sparse_paired: Dict[str, Any],
@@ -549,8 +673,10 @@ def write_documentation_files(
 ## 1. Executive Summary & Out-of-Fold Performance
 
 NightWatch evaluates multimodal clinical telemetry for next-day hypertensive episode warning. On the complete 200-patient cohort evaluated via 5-Fold GroupKFold cross-validation, the full multimodal digital twin reaches:
-- **Pooled Out-of-Fold ROC-AUC:** {kfold_summary['full']['mean_roc_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
-- **Pooled Out-of-Fold PR-AUC:** {kfold_summary['full']['mean_pr_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
+- **5-Fold Cross-Validation Mean ROC-AUC:** {kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f}
+- **5-Fold Cross-Validation Mean PR-AUC:** {kfold_summary['full']['mean_pr_auc']:.4f} ± {kfold_summary['full']['std_pr_auc']:.4f}
+- **Pooled Out-of-Fold ROC-AUC:** {pooled_metrics['full']['roc_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
+- **Pooled Out-of-Fold PR-AUC:** {pooled_metrics['full']['pr_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
 
 ---
 
@@ -643,8 +769,9 @@ Results come from synthetic data with assumptions built into the simulator, and 
 ---
 
 ## Performance Summary (5-Fold GroupKFold)
-- **Pooled Out-of-Fold ROC-AUC:** {kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
-- **Pooled Out-of-Fold PR-AUC:** {kfold_summary['full']['mean_pr_auc']:.4f} ± {kfold_summary['full']['std_pr_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
+- **5-Fold Cross-Validation Mean ROC-AUC:** {kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f}
+- **Pooled Out-of-Fold ROC-AUC:** {pooled_metrics['full']['roc_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
+- **Pooled Out-of-Fold PR-AUC:** {pooled_metrics['full']['pr_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
 - **Ablation Findings:** Blood pressure history is the only consistent gain across all patient folds (+{paired_diffs['tier2_vs_tier1']['roc_mean']:.4f} ROC, 5/5 wins). Sleep/HRV and adherence gains are inconsistent under daily cuff monitoring. Under sparse cuff monitoring (2-3 readings/week), sleep/HRV gains are suggestive only ({sparse_paired['tier3_vs_tier2']['roc_wins']} wins).
 
 ---
@@ -705,7 +832,7 @@ def main() -> None:
     operating_points = {"high": op_high, "moderate": op_mod}
 
     # 4. Sparse-BP Experiment
-    sparse_res = run_sparse_bp_experiment(records_df, patients_df, seeds=EVALUATION_SEEDS)
+    sparse_res = run_sparse_bp_experiment(records_df, patients_df, base_df=dataset_df, seeds=EVALUATION_SEEDS)
 
     # 5. Render plots (both ml/artifacts/ and docs/figures/)
     logger.info("Rendering publication diagnostic plots...")
@@ -765,6 +892,7 @@ def main() -> None:
     logger.info("Writing clean docs/evaluation_report.md and docs/model_card.md...")
     write_documentation_files(
         kfold_summary=kfold_res["kfold_summary"],
+        pooled_metrics=kfold_res["pooled_metrics"],
         paired_diffs=kfold_res["paired_diffs"],
         sparse_summary=sparse_res["summary"],
         sparse_paired=sparse_res["paired_diffs"],
@@ -778,9 +906,10 @@ def main() -> None:
     logger.info("======================================================================")
     logger.info("Robustness and Evaluation Integrity Pipeline Finished Successfully!")
     logger.info(f"High Threshold: {tau_high:.2f} | Mod Threshold: {tau_mod:.2f}")
-    logger.info(f"Pooled OOF Full ROC-AUC: {kfold_res['kfold_summary']['full']['mean_roc_auc']:.4f} ± {kfold_res['kfold_summary']['full']['std_roc_auc']:.4f}")
-    logger.info(f"Pooled OOF Full PR-AUC:  {kfold_res['kfold_summary']['full']['mean_pr_auc']:.4f} ± {kfold_res['kfold_summary']['full']['std_pr_auc']:.4f}")
-    logger.info(f"Cluster Bootstrap 95% CI: ROC {kfold_res['bootstrap_cis']['roc_auc_ci95']}, PR {kfold_res['bootstrap_cis']['pr_auc_ci95']}")
+    logger.info(f"5-fold mean ROC-AUC: {kfold_res['kfold_summary']['full']['mean_roc_auc']:.4f} ± {kfold_res['kfold_summary']['full']['std_roc_auc']:.4f}")
+    logger.info(f"5-fold mean PR-AUC:  {kfold_res['kfold_summary']['full']['mean_pr_auc']:.4f} ± {kfold_res['kfold_summary']['full']['std_pr_auc']:.4f}")
+    logger.info(f"Pooled OOF ROC-AUC:  {kfold_res['pooled_metrics']['full']['roc_auc']:.4f} (Patient Cluster 95% CI: {kfold_res['bootstrap_cis']['roc_auc_ci95']})")
+    logger.info(f"Pooled OOF PR-AUC:   {kfold_res['pooled_metrics']['full']['pr_auc']:.4f} (Patient Cluster 95% CI: {kfold_res['bootstrap_cis']['pr_auc_ci95']})")
     logger.info("======================================================================")
 
 

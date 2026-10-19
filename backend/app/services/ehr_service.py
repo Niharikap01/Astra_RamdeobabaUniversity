@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -99,8 +99,13 @@ class EHRService:
             "baseline_adherence": round(b_med, 2),
         }
 
-    def get_patient_static_dict(self, patient: Patient) -> Dict[str, Any]:
+    def get_patient_static_dict(self, patient: Union[Patient, str]) -> Dict[str, Any]:
         """Convert patient and EHR events to the static feature dictionary expected by FeatureEngineeringPipeline."""
+        if isinstance(patient, str):
+            p_obj = self.get_patient(patient)
+            if not p_obj:
+                return {}
+            patient = p_obj
         events = self.get_patient_ehr_events(patient.patient_id)
 
         diagnoses = [e.description for e in events if e.event_type == "diagnosis"]

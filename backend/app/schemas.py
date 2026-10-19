@@ -177,6 +177,7 @@ class FalsePositiveRequest(BaseModel):
 
 class ClinicianNoteCreate(BaseModel):
     note: str
+    author: Optional[str] = None
     alert_id: Optional[str] = None
 
 
@@ -185,9 +186,35 @@ class ClinicianNoteResponse(BaseModel):
     patient_id: str
     alert_id: Optional[str] = None
     note: str
+    author: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==============================================================================
+# Authentication & User Schemas
+# ==============================================================================
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    role: str  # clinician, admin, nurse, viewer
+    full_name: str
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 
 class BPRecheckRequest(BaseModel):
@@ -204,8 +231,8 @@ class RiskHorizonPoint(BaseModel):
     hour_offset: int
     is_predicted: bool
     risk_pct: float
-    uncertainty_lower: float = Field(description="Lower bound of coverage-adjusted uncertainty range (heuristic, not a CI)")
-    uncertainty_upper: float = Field(description="Upper bound of coverage-adjusted uncertainty range (heuristic, not a CI)")
+    uncertainty_lower: Optional[float] = Field(default=None, description="Lower bound of uncertainty range (omitted if not available)")
+    uncertainty_upper: Optional[float] = Field(default=None, description="Upper bound of uncertainty range (omitted if not available)")
     is_sleep_window: bool
     sleep_stage: Optional[str] = None
     has_bp_reading: bool = False
@@ -234,6 +261,7 @@ class RiskHorizonResponse(BaseModel):
     nocturnal_dipping_pct: Optional[float] = None
     morning_surge_magnitude: float
     risk_summary_text: str
+    confidence_interval_note: Optional[str] = "interval not available"
 
 
 class FactorChangeItem(BaseModel):
@@ -351,7 +379,7 @@ class WhatIfResponse(BaseModel):
 # ==============================================================================
 
 class SimulationStartRequest(BaseModel):
-    step_seconds: float = Field(default=10.0, ge=1.0, le=60.0)
+    step_seconds: float = Field(default=5.0, ge=1.0, le=60.0)
     patient_ids: Optional[List[str]] = None
 
 
@@ -367,3 +395,4 @@ class SimulationStatusResponse(BaseModel):
     active_scenario: Optional[str] = None
     ticks_completed: int
     last_tick_duration_seconds: Optional[float] = None
+    last_tick_seconds: Optional[float] = None

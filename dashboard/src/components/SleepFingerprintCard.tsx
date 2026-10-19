@@ -28,7 +28,9 @@ export const SleepFingerprintCard: React.FC<SleepFingerprintCardProps> = ({
     );
   }
 
-  const { axes, overall_status, written_summary, data_coverage_pct } = data;
+  const axes = data.axes || [];
+  const status = data.status || (data as any).overall_status || "optimal";
+  const summary = data.summary || (data as any).written_summary || "";
 
   // Radar chart option
   const radarOption = useMemo(() => {
@@ -158,19 +160,19 @@ export const SleepFingerprintCard: React.FC<SleepFingerprintCardProps> = ({
         {/* Status Chip */}
         <span
           className={`text-xs px-2.5 py-1 rounded-lg border font-mono font-medium self-start sm:self-auto flex items-center gap-1.5 ${
-            overall_status === "acute_deficit"
+            status === "acute_deficit"
               ? "border-rose-500/40 bg-rose-950/30 text-rose-300"
-              : overall_status === "degraded"
+              : status === "degraded"
               ? "border-amber-500/40 bg-amber-950/30 text-amber-300"
               : "border-emerald-500/40 bg-emerald-950/30 text-emerald-300"
           }`}
         >
-          {overall_status === "acute_deficit" ? (
+          {status === "acute_deficit" ? (
             <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
           ) : (
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
           )}
-          Status: {overall_status.replace("_", " ").toUpperCase()}
+          Status: {(status || "optimal").replace("_", " ").toUpperCase()}
         </span>
       </div>
 
@@ -225,7 +227,7 @@ export const SleepFingerprintCard: React.FC<SleepFingerprintCardProps> = ({
         <span className="font-sans font-semibold text-sky-400 uppercase text-[10px] tracking-wider block mb-1">
           Automated Circadian Phenotype Assessment
         </span>
-        {written_summary}
+        {summary}
       </div>
     </div>
   );

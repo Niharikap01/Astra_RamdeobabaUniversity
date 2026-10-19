@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from backend.app.auth import get_current_user
 from backend.app.database import get_db
+from backend.app.models import User
 from backend.app.schemas import WhatIfRequest, WhatIfResponse
 from backend.app.services.ehr_service import EHRService
 from backend.app.services.fusion_service import FusionService
@@ -18,6 +20,7 @@ router = APIRouter(prefix="/api/patients", tags=["What-If Simulator"])
 def evaluate_what_if_scenario(
     patient_id: str,
     payload: WhatIfRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Simulate counterfactual clinical interventions (sleep, adherence, activity, stress)

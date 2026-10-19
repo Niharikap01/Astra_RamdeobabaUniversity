@@ -21,8 +21,9 @@
 ---
 
 ## Performance Summary (5-Fold GroupKFold)
-- **Pooled Out-of-Fold ROC-AUC:** 0.8143 ± 0.0283 (Patient Cluster 95% CI: [0.7338, 0.8155])
-- **Pooled Out-of-Fold PR-AUC:** 0.6045 ± 0.0455 (Patient Cluster 95% CI: [0.4443, 0.6039])
+- **5-Fold Cross-Validation Mean ROC-AUC:** 0.8143 ± 0.0283
+- **Pooled Out-of-Fold ROC-AUC:** 0.7751 (Patient Cluster 95% CI: [0.7338, 0.8155])
+- **Pooled Out-of-Fold PR-AUC:** 0.5194 (Patient Cluster 95% CI: [0.4443, 0.6039])
 - **Ablation Findings:** Blood pressure history is the only consistent gain across all patient folds (+0.1671 ROC, 5/5 wins). Sleep/HRV and adherence gains are inconsistent under daily cuff monitoring. Under sparse cuff monitoring (2-3 readings/week), sleep/HRV gains are suggestive only (4/5 wins).
 
 ---

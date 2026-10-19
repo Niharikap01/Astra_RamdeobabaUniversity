@@ -5,19 +5,15 @@ Each block is a self-contained, ready-to-paste prompt (<=10 lines) with explicit
 
 ---
 
-### Task 1: JWT Authentication & Role-Based Access Control (RBAC)
+### Task 1: JWT Authentication & Role-Based Access Control (RBAC) [COMPLETED]
 
-```text
-Implement JWT authentication and RBAC for NightWatch.
-1. Add User model in backend/app/models.py (id, username, hashed_password, role, full_name).
-2. Add auth router /api/auth/login and /api/auth/me using bcrypt and PyJWT/python-jose.
-3. Protect patient REST endpoints and WebSocket /ws/twin/{id} with Depends(get_current_user).
-4. Auto-populate acknowledged_by and note author from JWT clinician identity.
-5. Seed default clinician user (dr_clinician/nightwatch2026) in backend/scripts/seed.py.
-6. Add auth context & login modal in dashboard/src/, injecting Bearer token into api.ts.
-7. Write backend/tests/test_auth.py validating login, invalid token 401, role permission, and WS auth.
-Acceptance: pytest backend/tests/test_auth.py passes; dashboard prompts login, stores token, and loads twin.
-```
+- [x] User model in `backend/app/models.py` (id, username, hashed_password, role, full_name).
+- [x] Auth router `/api/auth/login` and `/api/auth/me` using bcrypt and PyJWT.
+- [x] Protect patient REST endpoints and WebSocket `/ws/twin/{id}` with `Depends(get_current_user)`.
+- [x] Auto-populate `acknowledged_by` and note `author` from JWT clinician identity.
+- [x] Seed default clinician user (`dr_clinician/nightwatch2026`) in `backend/scripts/seed.py`.
+- [x] Auth context & login modal in `dashboard/src/`, injecting Bearer token into `api.ts` and WebSocket.
+- [x] `backend/tests/test_auth.py` passing 11/11 tests; entire suite 46/46 passing; dashboard build passing.
 
 ---
 

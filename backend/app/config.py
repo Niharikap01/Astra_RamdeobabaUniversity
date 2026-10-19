@@ -36,6 +36,21 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CORS_ORIGINS", "cors_origins"),
     )
 
+    # JWT Authentication & RBAC (Required: fail at startup if missing)
+    jwt_secret_key: str = Field(
+        ...,
+        validation_alias=AliasChoices("JWT_SECRET_KEY", "jwt_secret_key"),
+        description="Secret key for signing JWT tokens. Must be provided in environment or .env.",
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        validation_alias=AliasChoices("JWT_ALGORITHM", "jwt_algorithm"),
+    )
+    jwt_expire_minutes: int = Field(
+        default=1440,
+        validation_alias=AliasChoices("JWT_EXPIRE_MINUTES", "jwt_expire_minutes"),
+    )
+
     # Clinical Risk Bands
     risk_threshold_moderate: float = Field(default=0.35, validation_alias=AliasChoices("RISK_THRESHOLD_MODERATE", "risk_threshold_moderate"))
     risk_threshold_high: float = Field(default=0.65, validation_alias=AliasChoices("RISK_THRESHOLD_HIGH", "risk_threshold_high"))
@@ -50,7 +65,7 @@ class Settings(BaseSettings):
     simulation_patient_count: int = Field(default=200, validation_alias=AliasChoices("SIMULATION_PATIENT_COUNT", "simulation_patient_count"))
     simulation_max_patients: int = Field(default=30, validation_alias=AliasChoices("SIMULATION_MAX_PATIENTS", "simulation_max_patients"))
     simulation_history_days: int = Field(default=120, validation_alias=AliasChoices("SIMULATION_HISTORY_DAYS", "simulation_history_days"))
-    simulation_step_seconds: float = Field(default=10.0, validation_alias=AliasChoices("SIMULATION_STEP_SECONDS", "simulation_step_seconds"))
+    simulation_step_seconds: float = Field(default=5.0, validation_alias=AliasChoices("SIMULATION_STEP_SECONDS", "simulation_step_seconds"))
     simulation_random_seed: int = Field(default=42, validation_alias=AliasChoices("SIMULATION_RANDOM_SEED", "simulation_random_seed"))
 
     # ML Artifacts, Data, and Documentation paths

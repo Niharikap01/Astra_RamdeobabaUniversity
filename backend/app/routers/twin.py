@@ -5,7 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from backend.app.auth import get_current_user
 from backend.app.database import get_db
+from backend.app.models import User
 from backend.app.schemas import (
     DigitalTwinResponse,
     RiskHorizonResponse,
@@ -21,7 +23,11 @@ router = APIRouter(prefix="/api/patients", tags=["Digital Twin"])
 
 
 @router.get("/{patient_id}/twin", response_model=DigitalTwinResponse)
-def get_patient_twin(patient_id: str, db: Session = Depends(get_db)):
+def get_patient_twin(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Retrieve full consolidated Digital Twin representation of patient."""
     twin_svc = TwinService(db)
     twin = twin_svc.build_twin(patient_id)
@@ -31,7 +37,11 @@ def get_patient_twin(patient_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/sleep-fingerprint", response_model=SleepFingerprintData)
-def get_sleep_fingerprint(patient_id: str, db: Session = Depends(get_db)):
+def get_sleep_fingerprint(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Retrieve 5-axis normalized radar deviations vs personal 30-day baseline."""
     ehr = EHRService(db)
     patient = ehr.get_patient(patient_id)
@@ -46,7 +56,11 @@ def get_sleep_fingerprint(patient_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/risk-horizon", response_model=RiskHorizonResponse)
-def get_risk_horizon(patient_id: str, db: Session = Depends(get_db)):
+def get_risk_horizon(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Retrieve 24-hour synchronized Risk Horizon trajectory."""
     twin_svc = TwinService(db)
     horizon = twin_svc.build_risk_horizon(patient_id)
@@ -56,7 +70,11 @@ def get_risk_horizon(patient_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/why-risk-changed", response_model=WhyRiskChangedResponse)
-def get_why_risk_changed(patient_id: str, db: Session = Depends(get_db)):
+def get_why_risk_changed(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Retrieve clinician-oriented signed factor waterfall comparison."""
     twin_svc = TwinService(db)
     res = twin_svc.get_why_risk_changed(patient_id)

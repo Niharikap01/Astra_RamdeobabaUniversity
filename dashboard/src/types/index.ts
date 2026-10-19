@@ -114,8 +114,10 @@ export interface RiskHorizonPoint {
   hour_offset: number;
   is_predicted: boolean;
   risk_pct: number;
-  confidence_lower: number;
-  confidence_upper: number;
+  confidence_lower?: number | null;
+  confidence_upper?: number | null;
+  uncertainty_lower?: number | null;
+  uncertainty_upper?: number | null;
   is_sleep_window: boolean;
   sleep_stage?: "awake" | "deep" | "rem" | "light" | null;
   has_bp_reading: boolean;
@@ -144,6 +146,7 @@ export interface RiskHorizonResponse {
   nocturnal_dipping_pct?: number | null;
   morning_surge_magnitude: number;
   risk_summary_text: string;
+  confidence_interval_note?: string;
 }
 
 export interface FactorChangeItem {
@@ -263,23 +266,17 @@ export interface ReadingsSeriesResponse {
   series: DailyReadingItem[];
 }
 
-export interface FactorChangeItem {
-  feature: string;
-  display_name: string;
-  current_value: number;
-  previous_value: number;
-  impact_delta: number;
-  direction: "increased_risk" | "decreased_risk" | "neutral" | string;
-  clinical_explanation: string;
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: "clinician" | "admin" | "nurse" | "viewer" | string;
+  full_name: string;
+  created_at?: string;
 }
 
-export interface WhyRiskChangedResponse {
-  patient_id: string;
-  current_risk_pct: number;
-  previous_risk_pct?: number | null;
-  risk_delta_pct?: number | null;
-  summary: string;
-  factors: FactorChangeItem[];
-  trust_statement: string;
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
 }
 

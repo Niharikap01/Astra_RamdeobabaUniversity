@@ -55,6 +55,8 @@ import { TwinSummaryCard } from "./components/TwinSummaryCard";
 import { WhyRiskChangedCard } from "./components/WhyRiskChangedCard";
 import { SleepFingerprintCard } from "./components/SleepFingerprintCard";
 import { WhatIfSimulatorCard } from "./components/WhatIfSimulatorCard";
+import { LoginModal } from "./components/LoginModal";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 type ActiveTabType = "overview" | "what-if" | "fingerprint" | "bp-trend" | "circadian" | "attribution";
 
@@ -153,12 +155,12 @@ export default function App() {
         ]);
 
         setPatientProfile(profile);
-        if (twinData) setTwin(twinData);
-        if (horizonData) setRiskHorizon(horizonData);
+        setTwin(twinData);
+        setRiskHorizon(horizonData);
         setAlerts(alertsData);
-        if (seriesData) setReadingsSeries(seriesData);
-        if (whyData) setWhyRiskChanged(whyData);
-        if (fingerprintData) setSleepFingerprint(fingerprintData);
+        setReadingsSeries(seriesData);
+        setWhyRiskChanged(whyData);
+        setSleepFingerprint(fingerprintData);
         setLastUpdatedTime(new Date());
         setIsOffline(false);
       } catch (err) {
@@ -171,6 +173,12 @@ export default function App() {
 
   useEffect(() => {
     if (selectedPatientId) {
+      setTwin(null);
+      setRiskHorizon(null);
+      setWhyRiskChanged(null);
+      setSleepFingerprint(null);
+      setReadingsSeries(null);
+      setWhatIfSimulatedRisk(null);
       loadPatientData(selectedPatientId);
     }
   }, [selectedPatientId, loadPatientData]);
@@ -520,125 +528,143 @@ export default function App() {
 
                 {/* Tab 1: Overview & 24h Horizon & Baseline Comparison */}
                 {activeTab === "overview" && (
-                  <div className="space-y-6">
-                    {/* Signature Risk Horizon Chart with Ghosted Simulated Curve */}
-                    <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
-                      <DataTableToggle
-                        rows={riskHorizon?.series || []}
-                        cols={horizonColumns}
-                        title="24-Hour Synchronized Risk Horizon Trajectory"
-                        filename={`nightwatch_risk_horizon_${selectedPatientId}.csv`}
-                      >
-                        <RiskHorizonChart
-                          horizon={riskHorizon}
-                          theme={theme}
-                          whatIfSimulatedRisk={whatIfSimulatedRisk}
-                          thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
-                        />
-                      </DataTableToggle>
-                    </div>
+                  <ErrorBoundary key={`overview-${selectedPatientId}`} onRetry={() => loadPatientData(selectedPatientId)}>
+                    <div className="space-y-6">
+                      {/* Signature Risk Horizon Chart with Ghosted Simulated Curve */}
+                      <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
+                        <DataTableToggle
+                          rows={riskHorizon?.series || []}
+                          cols={horizonColumns}
+                          title="24-Hour Synchronized Risk Horizon Trajectory"
+                          filename={`nightwatch_risk_horizon_${selectedPatientId}.csv`}
+                        >
+                          <RiskHorizonChart
+                            horizon={riskHorizon}
+                            theme={theme}
+                            whatIfSimulatedRisk={whatIfSimulatedRisk}
+                            thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
+                          />
+                        </DataTableToggle>
+                      </div>
 
-                    {/* Twin State Physiological Baseline Delta Card */}
-                    <TwinSummaryCard
-                      dynamicState={twin?.patient?.dynamic_state}
-                      baseline={readingsSeries?.baseline_30d || {}}
-                      patientId={selectedPatientId}
-                    />
-                  </div>
+                      {/* Twin State Physiological Baseline Delta Card */}
+                      <TwinSummaryCard
+                        dynamicState={twin?.dynamic_state}
+                        baseline={readingsSeries?.baseline_30d || {}}
+                        patientId={selectedPatientId}
+                      />
+                    </div>
+                  </ErrorBoundary>
                 )}
 
                 {/* Tab 2: What-If Counterfactual Simulator */}
                 {activeTab === "what-if" && (
-                  <div className="space-y-6">
-                    <WhatIfSimulatorCard
-                      patientId={selectedPatientId}
-                      currentRiskPct={twin?.prediction?.probability ? Math.round(twin.prediction.probability * 100) : 35}
-                      onSimulatedRiskChange={setWhatIfSimulatedRisk}
-                    />
+                  <ErrorBoundary key={`what-if-${selectedPatientId}`} onRetry={() => loadPatientData(selectedPatientId)}>
+                    <div className="space-y-6">
+                      <WhatIfSimulatorCard
+                        key={selectedPatientId}
+                        patientId={selectedPatientId}
+                        currentRiskPct={
+                          twin?.prediction?.probability !== undefined && twin?.prediction?.probability !== null
+                            ? Math.round(twin.prediction.probability * 100)
+                            : null
+                        }
+                        currentRiskLevel={twin?.prediction?.risk_level ?? null}
+                        onSimulatedRiskChange={setWhatIfSimulatedRisk}
+                      />
 
-                    {/* Associated Risk Horizon with Ghosted Simulated Curve */}
-                    <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
-                      <DataTableToggle
-                        rows={riskHorizon?.series || []}
-                        cols={horizonColumns}
-                        title="Risk Horizon: Ghosted Simulation Overlay"
-                        filename={`nightwatch_risk_horizon_simulated_${selectedPatientId}.csv`}
-                      >
-                        <RiskHorizonChart
-                          horizon={riskHorizon}
-                          theme={theme}
-                          whatIfSimulatedRisk={whatIfSimulatedRisk}
-                          thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
-                        />
-                      </DataTableToggle>
+                      {/* Associated Risk Horizon with Ghosted Simulated Curve */}
+                      <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm">
+                        <DataTableToggle
+                          rows={riskHorizon?.series || []}
+                          cols={horizonColumns}
+                          title="Risk Horizon: Ghosted Simulation Overlay"
+                          filename={`nightwatch_risk_horizon_simulated_${selectedPatientId}.csv`}
+                        >
+                          <RiskHorizonChart
+                            horizon={riskHorizon}
+                            theme={theme}
+                            whatIfSimulatedRisk={whatIfSimulatedRisk}
+                            thresholds={thresholds ? { moderate: thresholds.moderate, high: thresholds.high } : undefined}
+                          />
+                        </DataTableToggle>
+                      </div>
                     </div>
-                  </div>
+                  </ErrorBoundary>
                 )}
 
                 {/* Tab 3: Sleep Fingerprint (6-Axis Radar) */}
                 {activeTab === "fingerprint" && (
-                  <div className="space-y-6">
-                    <SleepFingerprintCard
-                      data={sleepFingerprint}
-                      patientId={selectedPatientId}
-                    />
+                  <ErrorBoundary key={`fingerprint-${selectedPatientId}`} onRetry={() => loadPatientData(selectedPatientId)}>
+                    <div className="space-y-6">
+                      <SleepFingerprintCard
+                        data={sleepFingerprint}
+                        patientId={selectedPatientId}
+                      />
 
-                    {/* Twin Summary Context */}
-                    <TwinSummaryCard
-                      dynamicState={twin?.patient?.dynamic_state}
-                      baseline={readingsSeries?.baseline_30d || {}}
-                      patientId={selectedPatientId}
-                    />
-                  </div>
+                      {/* Twin Summary Context */}
+                      <TwinSummaryCard
+                        dynamicState={twin?.dynamic_state}
+                        baseline={readingsSeries?.baseline_30d || {}}
+                        patientId={selectedPatientId}
+                      />
+                    </div>
+                  </ErrorBoundary>
                 )}
 
                 {/* Tab 4: Longitudinal BP Trend */}
                 {activeTab === "bp-trend" && (
-                  <div className="space-y-6">
-                    <BloodPressureTrendCard
-                      series={readingsSeries?.series || []}
-                      baseline={readingsSeries?.baseline_30d || {}}
-                      patientId={selectedPatientId}
-                      selectedDays={bpDays}
-                      onDaysChange={handleDaysChange}
-                      isLoading={isLoading}
-                    />
+                  <ErrorBoundary key={`bp-trend-${selectedPatientId}`} onRetry={() => loadPatientData(selectedPatientId)}>
+                    <div className="space-y-6">
+                      <BloodPressureTrendCard
+                        series={readingsSeries?.series || []}
+                        baseline={readingsSeries?.baseline_30d || {}}
+                        patientId={selectedPatientId}
+                        selectedDays={bpDays}
+                        onDaysChange={handleDaysChange}
+                        isLoading={isLoading}
+                      />
 
-                    {/* Associated Twin Summary */}
-                    <TwinSummaryCard
-                      dynamicState={twin?.patient?.dynamic_state}
-                      baseline={readingsSeries?.baseline_30d || {}}
-                      patientId={selectedPatientId}
-                    />
-                  </div>
+                      {/* Associated Twin Summary */}
+                      <TwinSummaryCard
+                        dynamicState={twin?.dynamic_state}
+                        baseline={readingsSeries?.baseline_30d || {}}
+                        patientId={selectedPatientId}
+                      />
+                    </div>
+                  </ErrorBoundary>
                 )}
 
                 {/* Tab 5: Circadian Waves */}
                 {activeTab === "circadian" && (
-                  <div className="space-y-6">
-                    <CircadianWavesCard
-                      series={readingsSeries?.series || []}
-                      baseline={readingsSeries?.baseline_30d || {}}
-                      patientId={selectedPatientId}
-                    />
-                  </div>
+                  <ErrorBoundary key={`circadian-${selectedPatientId}`} onRetry={() => loadPatientData(selectedPatientId)}>
+                    <div className="space-y-6">
+                      <CircadianWavesCard
+                        series={readingsSeries?.series || []}
+                        baseline={readingsSeries?.baseline_30d || {}}
+                        patientId={selectedPatientId}
+                      />
+                    </div>
+                  </ErrorBoundary>
                 )}
 
                 {/* Tab 6: Factor Attribution Waterfall */}
                 {activeTab === "attribution" && (
-                  <div className="space-y-6">
-                    <WhyRiskChangedCard
-                      data={whyRiskChanged}
-                      patientId={selectedPatientId}
-                    />
+                  <ErrorBoundary key={`attribution-${selectedPatientId}`} onRetry={() => loadPatientData(selectedPatientId)}>
+                    <div className="space-y-6">
+                      <WhyRiskChangedCard
+                        data={whyRiskChanged}
+                        patientId={selectedPatientId}
+                      />
 
-                    {/* Complementary Physiological Delta */}
-                    <TwinSummaryCard
-                      dynamicState={twin?.patient?.dynamic_state}
-                      baseline={readingsSeries?.baseline_30d || {}}
-                      patientId={selectedPatientId}
-                    />
-                  </div>
+                      {/* Complementary Physiological Delta */}
+                      <TwinSummaryCard
+                        dynamicState={twin?.dynamic_state}
+                        baseline={readingsSeries?.baseline_30d || {}}
+                        patientId={selectedPatientId}
+                      />
+                    </div>
+                  </ErrorBoundary>
                 )}
               </>
             )}
@@ -669,6 +695,9 @@ export default function App() {
           onToggle={() => setIsAlertDrawerOpen(!isAlertDrawerOpen)}
         />
       </div>
+
+      {/* Clinician Authentication & RBAC Modal */}
+      <LoginModal />
     </div>
   );
 }

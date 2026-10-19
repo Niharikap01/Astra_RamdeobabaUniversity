@@ -38,26 +38,38 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
   const isDark = theme === "dark";
   const palette = isDark ? TOKENS.colors.dark : TOKENS.colors.light;
 
+  // Confidence Interval Band: only if valid interval can be derived
+  const hasValidConfidence = series.some(
+    (p) => (p.confidence_lower != null && p.confidence_upper != null) ||
+           (p.uncertainty_lower != null && p.uncertainty_upper != null)
+  );
+
   const option = useMemo(() => {
+    const nowIdx = series.findIndex((p) => p.is_predicted);
+    const validNowIdx = nowIdx >= 0 ? nowIdx : series.length - 1;
+
     const xLabels = series.map((p) => {
       const d = new Date(p.timestamp);
-      const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      if (p.hour_offset === 0) return `${timeStr}\n[NOW]`;
-      return timeStr;
+      const dateStr = d.toLocaleDateString([], { month: "short", day: "numeric" });
+      if (p.is_predicted) return `${dateStr}\n[+24h Pred]`;
+      if (p.hour_offset === 0) return `${dateStr}\n[Today]`;
+      return dateStr;
     });
 
-    const nowIdx = series.findIndex((p) => p.hour_offset === 0);
-    const validNowIdx = nowIdx >= 0 ? nowIdx : 12;
-
-    // Series arrays
-    const observedData = series.map((p, idx) => (idx <= validNowIdx ? p.risk_pct : null));
-    const predictedData = series.map((p, idx) => (idx >= validNowIdx ? p.risk_pct : null));
-    
-    // Confidence Interval Band (lower bound base + delta area)
-    const confLower = series.map((p, idx) => (idx >= validNowIdx ? p.confidence_lower : null));
-    const confRange = series.map((p, idx) =>
-      idx >= validNowIdx ? Math.max(0, p.confidence_upper - p.confidence_lower) : null
-    );
+    // Series arrays: Past stored model estimates and future prediction
+    const observedData = series.map((p, idx) => (idx <= (validNowIdx > 0 ? validNowIdx - 1 : validNowIdx) ? p.risk_pct : null));
+    const predictedData = series.map((p, idx) => (idx >= Math.max(0, validNowIdx - 1) ? p.risk_pct : null));
+    const confLower = hasValidConfidence
+      ? series.map((p, idx) => (idx >= Math.max(0, validNowIdx - 1) ? (p.confidence_lower ?? p.uncertainty_lower) : null))
+      : [];
+    const confRange = hasValidConfidence
+      ? series.map((p, idx) => {
+          if (idx < Math.max(0, validNowIdx - 1)) return null;
+          const low = p.confidence_lower ?? p.uncertainty_lower;
+          const high = p.confidence_upper ?? p.uncertainty_upper;
+          return low != null && high != null ? Math.max(0, high - low) : null;
+        })
+      : [];
 
     // Ghosted What-If curve if active
     const whatIfCurve = whatIfSimulatedRisk != null
@@ -125,7 +137,7 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
             hour: "2-digit",
             minute: "2-digit",
           });
-          const status = pt.is_predicted ? "Predicted Forecast" : "Observed Telemetry";
+          const status = pt.is_predicted ? "Predicted Forecast" : "Model estimate (past)";
           const riskBand = pt.risk_pct >= 65 ? "High Risk" : pt.risk_pct >= 35 ? "Moderate Risk" : "Low Risk";
           const riskColor = pt.risk_pct >= 65 ? palette.riskHigh : pt.risk_pct >= 35 ? palette.riskModerate : palette.riskLow;
 
@@ -219,30 +231,33 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
         },
       },
       series: [
-        // 1. Shaded Lower Confidence Bound (Transparent Base)
+        // 1 & 2. Shaded Confidence Interval Band (only if valid interval derived)
+        ...(hasValidConfidence
+          ? [
+              {
+                name: "Confidence Lower",
+                type: "line",
+                data: confLower,
+                lineStyle: { opacity: 0 },
+                stack: "confidence-band",
+                symbol: "none",
+              },
+              {
+                name: "95% Confidence Band",
+                type: "line",
+                data: confRange,
+                lineStyle: { opacity: 0 },
+                areaStyle: {
+                  color: isDark ? "rgba(245, 158, 11, 0.12)" : "rgba(217, 119, 6, 0.14)",
+                },
+                stack: "confidence-band",
+                symbol: "none",
+              },
+            ]
+          : []),
+        // 3. Model Estimate Trajectory (Past Stored Model Estimates)
         {
-          name: "Confidence Lower",
-          type: "line",
-          data: confLower,
-          lineStyle: { opacity: 0 },
-          stack: "confidence-band",
-          symbol: "none",
-        },
-        // 2. Shaded Confidence Interval Width
-        {
-          name: "95% Confidence Band",
-          type: "line",
-          data: confRange,
-          lineStyle: { opacity: 0 },
-          areaStyle: {
-            color: isDark ? "rgba(245, 158, 11, 0.12)" : "rgba(217, 119, 6, 0.14)",
-          },
-          stack: "confidence-band",
-          symbol: "none",
-        },
-        // 3. Observed Trajectory (-12h to Now)
-        {
-          name: "Observed Risk",
+          name: "Model estimate (past)",
           type: "line",
           data: observedData,
           smooth: true,
@@ -361,7 +376,7 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-serif text-base font-semibold text-white tracking-tight flex items-center gap-2">
-              The Risk Horizon (24-Hour Observed vs Predicted)
+              The Risk Horizon (Model estimate (past) vs Predicted Forecast)
             </h3>
             {whatIfSimulatedRisk != null && (
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-pink-950/70 text-pink-300 border border-pink-700/50 flex items-center gap-1">
@@ -405,16 +420,22 @@ export const RiskHorizonChart: React.FC<RiskHorizonChartProps> = ({
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-1 rounded bg-[#38bdf8]" />
-            <span className="text-slate-300 text-[11px]">Observed</span>
+            <span className="text-slate-300 text-[11px]">Model estimate (past)</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-1 rounded border-b-2 border-dashed border-[#f59e0b]" />
             <span className="text-slate-300 text-[11px]">Predicted Forecast</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded bg-amber-500/20 border border-amber-500/40" />
-            <span className="text-slate-400 text-[11px]">95% Confidence Band</span>
-          </div>
+          {hasValidConfidence ? (
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-2 rounded bg-amber-500/20 border border-amber-500/40" />
+              <span className="text-slate-400 text-[11px]">95% Confidence Band</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 text-[11px]">Confidence Band: interval not available</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rotate-45 bg-purple-500 border border-white" />
             <span className="text-slate-300 text-[11px]">Home Cuff BP</span>

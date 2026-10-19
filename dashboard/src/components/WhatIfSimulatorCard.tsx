@@ -33,6 +33,7 @@ import { WhatIfResponse } from "../types";
 interface WhatIfSimulatorCardProps {
   patientId: string;
   currentRiskPct?: number | null;
+  currentRiskLevel?: string | null;
   onSimulatedRiskChange?: (simulatedRiskPct: number | null) => void;
 }
 
@@ -50,6 +51,7 @@ interface SavedScenario {
 export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
   patientId,
   currentRiskPct,
+  currentRiskLevel,
   onSimulatedRiskChange,
 }) => {
   // Slider states
@@ -62,6 +64,19 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
   const [simulationResult, setSimulationResult] = useState<WhatIfResponse | null>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [savedScenarios, setSavedScenarios] = useState<SavedScenario[]>([]);
+
+  // Reset all panel state when selected patient changes
+  useEffect(() => {
+    setSleepDelta(0);
+    setMedicationTaken(1);
+    setStepsDelta(0);
+    setSbpDelta(0);
+    setSimulationResult(null);
+    setSavedScenarios([]);
+    if (onSimulatedRiskChange) {
+      onSimulatedRiskChange(null);
+    }
+  }, [patientId]);
 
   // Presets definition
   const presets = [
@@ -175,9 +190,16 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
     setSbpDelta(s.sbpDelta);
   };
 
-  const currentRisk = simulationResult ? Math.round(simulationResult.baseline_probability * 100) : currentRiskPct ?? 35;
-  const simulatedRisk = simulationResult ? Math.round(simulationResult.new_probability * 100) : currentRisk;
-  const deltaRisk = simulatedRisk - currentRisk;
+  const currentRisk = simulationResult?.baseline_probability != null
+    ? Math.round(simulationResult.baseline_probability * 100)
+    : currentRiskPct != null
+    ? currentRiskPct
+    : null;
+  const simulatedRisk = simulationResult?.new_probability != null
+    ? Math.round(simulationResult.new_probability * 100)
+    : currentRisk;
+  const hasPrediction = currentRisk != null;
+  const deltaRisk = hasPrediction && simulatedRisk != null ? simulatedRisk - currentRisk : null;
 
   return (
     <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 shadow-sm space-y-5">
@@ -232,10 +254,14 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
         <div className="text-center sm:text-left">
           <span className="text-[11px] text-slate-400 uppercase tracking-wider block">Current Baseline Risk</span>
           <div className="text-2xl font-bold font-mono text-slate-200 mt-1">
-            {currentRisk}%
+            {hasPrediction ? `${currentRisk}%` : "no prediction"}
           </div>
           <span className="text-[10px] text-slate-500 font-mono mt-0.5 block">
-            Band: {simulationResult?.baseline_risk_level || "Observed"}
+            {simulationResult?.baseline_risk_level && simulationResult.baseline_risk_level !== "Observed"
+              ? `Band: ${simulationResult.baseline_risk_level}`
+              : currentRiskLevel && currentRiskLevel !== "Observed"
+              ? `Band: ${currentRiskLevel}`
+              : "Model estimate"}
           </span>
         </div>
 
@@ -245,22 +271,26 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
             <span className="text-slate-400 text-xs">Simulated Shift</span>
             <ArrowRight className="w-4 h-4 text-purple-400" />
           </div>
-          <div
-            className={`text-sm font-mono font-bold mt-1 flex items-center gap-1 ${
-              deltaRisk < 0
-                ? "text-emerald-400"
-                : deltaRisk > 0
-                ? "text-rose-400"
-                : "text-slate-400"
-            }`}
-          >
-            {deltaRisk < 0 ? (
-              <ArrowDownRight className="w-4 h-4" />
-            ) : deltaRisk > 0 ? (
-              <ArrowUpRight className="w-4 h-4" />
-            ) : null}
-            {deltaRisk > 0 ? `+${deltaRisk}%` : `${deltaRisk}%`}
-          </div>
+          {deltaRisk !== null ? (
+            <div
+              className={`text-sm font-mono font-bold mt-1 flex items-center gap-1 ${
+                deltaRisk < 0
+                  ? "text-emerald-400"
+                  : deltaRisk > 0
+                  ? "text-rose-400"
+                  : "text-slate-400"
+              }`}
+            >
+              {deltaRisk < 0 ? (
+                <ArrowDownRight className="w-4 h-4" />
+              ) : deltaRisk > 0 ? (
+                <ArrowUpRight className="w-4 h-4" />
+              ) : null}
+              {deltaRisk > 0 ? `+${deltaRisk}%` : `${deltaRisk}%`}
+            </div>
+          ) : (
+            <span className="text-xs text-slate-500 font-mono mt-1">—</span>
+          )}
         </div>
 
         {/* Simulated State */}
@@ -268,17 +298,23 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
           <span className="text-[11px] text-slate-400 uppercase tracking-wider block">Simulated 24h Risk</span>
           <div
             className={`text-2xl font-bold font-mono mt-1 ${
-              simulatedRisk >= 65
+              !hasPrediction
+                ? "text-slate-400"
+                : simulatedRisk !== null && simulatedRisk >= 65
                 ? "text-rose-400"
-                : simulatedRisk >= 35
+                : simulatedRisk !== null && simulatedRisk >= 35
                 ? "text-amber-400"
                 : "text-emerald-400"
             }`}
           >
-            {simulatedRisk}%
+            {hasPrediction && simulatedRisk !== null ? `${simulatedRisk}%` : "no prediction"}
           </div>
           <span className="text-[10px] text-slate-400 font-mono mt-0.5 block">
-            New Band: {simulationResult?.new_band || simulationResult?.new_risk_level || "Simulated"}
+            {simulationResult?.new_band && simulationResult.new_band !== "Observed"
+              ? `New Band: ${simulationResult.new_band}`
+              : simulationResult?.new_risk_level && simulationResult.new_risk_level !== "Observed"
+              ? `New Band: ${simulationResult.new_risk_level}`
+              : "Model estimate"}
           </span>
         </div>
       </div>

@@ -18,10 +18,20 @@ export const RiskSummaryCard: React.FC<RiskSummaryCardProps> = ({
   recommendedActions,
   thresholds,
 }) => {
-  if (!prediction) {
+  if (!prediction || prediction.probability === null || prediction.probability === undefined) {
     return (
-      <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 text-slate-400 text-sm">
-        Awaiting calibrated prediction forecast...
+      <div className="bg-slate-900/90 rounded-xl p-5 border border-slate-800 text-slate-400 text-sm flex items-center justify-between">
+        <div>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+            Executive Assessment
+          </span>
+          <h3 className="font-serif text-lg font-semibold text-white tracking-tight mt-0.5">
+            24h Hypertensive Episode Risk
+          </h3>
+        </div>
+        <span className="px-2.5 py-1 rounded-full text-xs font-semibold border bg-slate-800 text-slate-400 border-slate-700 font-mono">
+          no prediction
+        </span>
       </div>
     );
   }

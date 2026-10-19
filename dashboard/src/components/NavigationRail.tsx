@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  LogOut,
   Moon,
   Play,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { PatientSummary, SimulationStatusResponse } from "../types";
+import { useAuth } from "../context/AuthContext";
 
 interface NavigationRailProps {
   patients: PatientSummary[];
@@ -50,6 +52,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const { user, isAuthenticated, logout, openLoginModal } = useAuth();
 
   const filteredPatients = patients.filter(
     (p) =>
@@ -139,7 +142,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {filteredPatients.map((patient) => {
           const isSelected = patient.patient_id === selectedPatientId;
-          const isNoPrediction = patient.latest_risk_level == null;
+          const isNoPrediction = patient.latest_probability == null || patient.latest_risk_level == null;
           const riskColor =
             isNoPrediction
               ? "text-slate-400 border-slate-700/60 bg-slate-800/40"
@@ -272,6 +275,42 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
             </button>
           </div>
         )}
+
+        {/* Authenticated Clinician User Info */}
+        <div className="pt-2 border-t border-slate-800/80">
+          {isAuthenticated && user ? (
+            <div className="flex items-center justify-between gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-2 overflow-hidden">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-semibold text-indigo-300 flex-shrink-0">
+                  {user.full_name ? user.full_name.charAt(0) : "D"}
+                </div>
+                {isExpanded && (
+                  <div className="truncate">
+                    <p className="text-xs font-medium text-slate-200 truncate">{user.full_name}</p>
+                    <p className="text-[10px] text-indigo-400 font-mono capitalize">{user.role}</p>
+                  </div>
+                )}
+              </div>
+              {isExpanded && (
+                <button
+                  onClick={logout}
+                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 rounded-lg transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={openLoginModal}
+              className="w-full py-1.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 rounded-xl text-xs text-indigo-300 flex items-center justify-center gap-2 transition-all"
+            >
+              <User className="w-3.5 h-3.5" />
+              {isExpanded && <span>Clinician Sign In</span>}
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );

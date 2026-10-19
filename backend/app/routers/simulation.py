@@ -24,7 +24,7 @@ logger = logging.getLogger("nightwatch.simulation_router")
 router = APIRouter(prefix="/api/simulation", tags=["Simulation Engine"])
 
 # Global scenario runner instance
-runner = ScenarioRunner(step_seconds=10.0)
+runner = ScenarioRunner(step_seconds=5.0)
 
 
 async def handle_simulated_day(patient_id: str, readings_list: list) -> None:
@@ -45,16 +45,26 @@ async def handle_simulated_day(patient_id: str, readings_list: list) -> None:
             rec_time = datetime.fromisoformat(r["recorded_at"]) if isinstance(r["recorded_at"], str) else r["recorded_at"]
             if rec_time.tzinfo is None:
                 rec_time = rec_time.replace(tzinfo=timezone.utc)
-            db_reading = SensorReading(
+            existing = db.query(SensorReading).filter_by(
                 patient_id=patient_id,
                 sensor_type=r["sensor_type"],
-                value=r["value"],
-                unit=r["unit"],
                 recorded_at=rec_time,
-                ingested_at=datetime.now(timezone.utc),
-                source=r.get("source", "simulator"),
-            )
-            db.merge(db_reading)
+            ).first()
+            if existing:
+                existing.value = r["value"]
+                existing.unit = r["unit"]
+                existing.ingested_at = datetime.now(timezone.utc)
+            else:
+                db_reading = SensorReading(
+                    patient_id=patient_id,
+                    sensor_type=r["sensor_type"],
+                    value=r["value"],
+                    unit=r["unit"],
+                    recorded_at=rec_time,
+                    ingested_at=datetime.now(timezone.utc),
+                    source=r.get("source", "simulator"),
+                )
+                db.add(db_reading)
         db.commit()
 
         # 2. Recalculate features once for the simulated day
@@ -103,21 +113,58 @@ async def start_simulation(payload: SimulationStartRequest, db: Session = Depend
     cohort: list[PatientProfile] = []
     for p in db_patients:
         static_dict = ehr.get_patient_static_dict(p)
+
+        def _f(val, fallback: float) -> float:
+            try:
+                if val is None:
+                    return fallback
+                import math
+                fval = float(val)
+                return fallback if math.isnan(fval) else fval
+            except (ValueError, TypeError):
+                return fallback
+
+        def _i(val, fallback: int) -> int:
+            try:
+                return fallback if val is None else int(val)
+            except (ValueError, TypeError):
+                return fallback
+
         cohort.append(PatientProfile(
             patient_id=p.patient_id,
             name=p.name,
             age=p.age,
             sex=p.sex,
-            height_cm=p.height_cm,
-            weight_kg=p.weight_kg,
-            bmi=p.bmi,
+            height_cm=_f(p.height_cm, 170.0),
+            weight_kg=_f(p.weight_kg, 75.0),
+            bmi=_f(p.bmi, 26.0),
             archetype=p.archetype,
-            baseline_sbp=float(static_dict.get("baseline_sbp", 125.0)),
-            baseline_dbp=float(static_dict.get("baseline_dbp", 80.0)),
-            baseline_sleep_hours=float(static_dict.get("baseline_sleep_hours", 7.0)),
-            baseline_hrv_rmssd=float(static_dict.get("baseline_hrv_rmssd", 35.0)),
-            baseline_resting_hr=float(static_dict.get("baseline_resting_hr", 68.0)),
-            adherence_tendency=float(static_dict.get("baseline_adherence", 0.9)),
+            hypertension_duration_years=_f(static_dict.get("hypertension_duration_years"), 5.0),
+            baseline_sbp=_f(static_dict.get("baseline_sbp"), 125.0),
+            baseline_dbp=_f(static_dict.get("baseline_dbp"), 80.0),
+            baseline_hrv_rmssd=_f(static_dict.get("baseline_hrv_rmssd"), 35.0),
+            baseline_resting_hr=_f(static_dict.get("baseline_resting_hr"), 68.0),
+            baseline_sleep_hours=_f(static_dict.get("baseline_sleep_hours"), 7.0),
+            family_history_cvd=_i(static_dict.get("family_history_cvd"), 0),
+            diabetes=_i(static_dict.get("diabetes"), 0),
+            ckd=_i(static_dict.get("ckd"), 0),
+            dyslipidemia=_i(static_dict.get("dyslipidemia"), 0),
+            prior_stroke=_i(static_dict.get("prior_stroke"), 0),
+            ihd=_i(static_dict.get("ihd"), 0),
+            osa=_i(static_dict.get("osa"), 0),
+            hba1c=_f(static_dict.get("hba1c"), 5.6),
+            ldl_cholesterol=_f(static_dict.get("ldl_cholesterol"), 100.0),
+            hdl_cholesterol=_f(static_dict.get("hdl_cholesterol"), 45.0),
+            triglycerides=_f(static_dict.get("triglycerides"), 130.0),
+            serum_creatinine=_f(static_dict.get("serum_creatinine"), 1.0),
+            egfr=_f(static_dict.get("egfr"), 85.0),
+            serum_potassium=_f(static_dict.get("serum_potassium"), 4.3),
+            med_acei=_i(static_dict.get("med_acei"), 0),
+            med_arb=_i(static_dict.get("med_arb"), 0),
+            med_ccb=_i(static_dict.get("med_ccb"), 0),
+            med_beta_blocker=_i(static_dict.get("med_beta_blocker"), 0),
+            med_diuretic=_i(static_dict.get("med_diuretic"), 0),
+            med_statin=_i(static_dict.get("med_statin"), 0),
         ))
 
     await runner.start(patients=cohort, latest_records={}, step_seconds=payload.step_seconds)
@@ -151,6 +198,7 @@ def get_simulation_status():
         active_scenario=st.active_scenario,
         ticks_completed=st.ticks_completed,
         last_tick_duration_seconds=st.last_tick_duration_seconds,
+        last_tick_seconds=st.last_tick_duration_seconds,
     )
 
 

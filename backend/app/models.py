@@ -155,6 +155,21 @@ class ClinicianNote(Base):
     patient_id = Column(String(64), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False, index=True)
     alert_id = Column(String(64), ForeignKey("alerts.alert_id", ondelete="SET NULL"), nullable=True)
     note = Column(Text, nullable=False)
+    author = Column(String(128), nullable=True, default="Dr. Clinician")
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     patient = relationship("Patient", back_populates="notes")
+
+
+class User(Base):
+    """User account for clinician and administrative staff authentication & RBAC."""
+
+    __tablename__ = "users"
+
+    id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(256), nullable=False)
+    role = Column(String(32), nullable=False, default="clinician")  # clinician, admin, nurse, viewer
+    full_name = Column(String(128), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+

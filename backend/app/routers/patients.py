@@ -6,7 +6,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from backend.app.auth import get_current_user
 from backend.app.database import get_db
+from backend.app.models import ClinicianNote, User
 from backend.app.schemas import (
     BPRecheckRequest,
     ClinicianNoteCreate,
@@ -27,6 +29,7 @@ router = APIRouter(prefix="/api/patients", tags=["Patients"])
 def list_patients(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Retrieve cohort of monitored patients with baseline summary and current risk tier."""
@@ -70,7 +73,11 @@ def list_patients(
 
 
 @router.get("/{patient_id}/profile", response_model=PatientProfileDetail)
-def get_patient_profile(patient_id: str, db: Session = Depends(get_db)):
+def get_patient_profile(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Retrieve complete static clinical profile including comorbidities, labs, and medications."""
     ehr = EHRService(db)
     patient = ehr.get_patient(patient_id)
@@ -113,10 +120,32 @@ def get_patient_profile(patient_id: str, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{patient_id}/notes", response_model=List[ClinicianNoteResponse])
+def list_patient_notes(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retrieve all clinician documentation notes for patient record."""
+    ehr = EHRService(db)
+    patient = ehr.get_patient(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
+
+    notes = (
+        db.query(ClinicianNote)
+        .filter(ClinicianNote.patient_id == patient_id)
+        .order_by(ClinicianNote.created_at.desc())
+        .all()
+    )
+    return notes
+
+
 @router.post("/{patient_id}/notes", response_model=ClinicianNoteResponse)
 def add_patient_note(
     patient_id: str,
     payload: ClinicianNoteCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Add a documented clinician note for the patient record."""
@@ -125,8 +154,14 @@ def add_patient_note(
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
 
+    author_name = payload.author or current_user.full_name or current_user.username
     alert_svc = AlertService(db)
-    note = alert_svc.add_clinician_note(patient_id, payload.note, alert_id=payload.alert_id)
+    note = alert_svc.add_clinician_note(
+        patient_id=patient_id,
+        note_text=payload.note,
+        alert_id=payload.alert_id,
+        author=author_name,
+    )
     return note
 
 
@@ -134,6 +169,7 @@ def add_patient_note(
 def request_bp_recheck(
     patient_id: str,
     payload: BPRecheckRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Request an immediate seated home blood pressure cuff re-measurement from patient."""
@@ -142,10 +178,12 @@ def request_bp_recheck(
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
 
+    author_name = current_user.full_name or current_user.username
     alert_svc = AlertService(db)
     alert_svc.add_clinician_note(
         patient_id=patient_id,
         note_text=f"[BP Recheck Requested: Priority={payload.priority.upper()}] Instructions: {payload.instructions}",
+        author=author_name,
     )
 
     return MessageResponse(

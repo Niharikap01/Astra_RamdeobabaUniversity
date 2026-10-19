@@ -15,15 +15,14 @@
 
 ## Plain-Language Clinical Interpretation
 
-1. **Modest Effect Sizes**:
-   The empirical risk deltas from lifestyle/wearable interventions average between **-8.38%** and **-0.18%**. Consistent with the feature ablation studies, baseline blood pressure history and hemodynamic volatility remain the dominant drivers of next-day hypertensive episodes. Wearable autonomic signals (sleep, HRV, steps) modulate short-term probability at the margin.
+1. **Ablation vs Counterfactual Sensitivity**:
+   Sleep features add little predictive accuracy in the ablation (+0.002 ROC-AUC) yet the model is sensitive to the joint sleep counterfactual (mean -8.4 pts for +1.5 h); treat as modeled associations in synthetic data, not validated treatment effects.
 
-2. **Paradoxical "Wrong-Way" Risk Shifts**:
-   - **Sleep +1.5 h**: 1.7% of patients moved the wrong way.
-   - **Medication Taken**: 21.7% of patients moved the wrong way.
-   - **Steps +4,000**: 6.7% of patients moved the wrong way.
-   *Etiology*: In non-linear gradient-boosted decision trees, feature correlations can interact in high-dimensional split space (e.g., higher sleep duration shifting into a tree leaf where baseline SBP interacts with higher nocturnal sympathetic tone proxy). NightWatch candidly discloses these paradoxical shifts rather than artificially smoothing them.
+2. **Observed Directional Shifts**:
+   - **Sleep +1.5 h**: 78.3% improved (mean delta -8.38%), 1.7% wrong-way, 20.0% neutral.
+   - **Medication Taken**: 13.3% improved (mean delta -0.18%), 21.7% wrong-way, 65.0% neutral.
+   - **Steps +4,000**: 55.0% improved (mean delta -1.70%), 6.7% wrong-way, 38.3% neutral.
 
 3. **Clinical Trust and Guardrails**:
-   - Every what-if response includes an explicit `effect_note` contextualizing modest changes.
+   - Every what-if response includes an explicit `effect_note` contextualizing changes.
    - Mandatory disclaimer: "Simulated scenario for clinical discussion. Modeled estimate, not a treatment recommendation."

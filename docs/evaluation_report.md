@@ -11,8 +11,9 @@
 ## 1. Executive Summary & Out-of-Fold Performance
 
 NightWatch evaluates multimodal clinical telemetry for next-day hypertensive episode warning. On the complete 200-patient cohort evaluated via 5-Fold GroupKFold cross-validation, the full multimodal digital twin reaches:
-- **Pooled Out-of-Fold ROC-AUC:** 0.8143 (Patient Cluster 95% CI: [0.7338, 0.8155])
-- **Pooled Out-of-Fold PR-AUC:** 0.6045 (Patient Cluster 95% CI: [0.4443, 0.6039])
+- **5-Fold Cross-Validation Mean ROC-AUC:** 0.8143 ± 0.0283
+- **Pooled Out-of-Fold ROC-AUC:** 0.7751 (Patient Cluster 95% CI: [0.7338, 0.8155])
+- **Pooled Out-of-Fold PR-AUC:** 0.5194 (Patient Cluster 95% CI: [0.4443, 0.6039])
 
 ---
 
@@ -44,11 +45,11 @@ When home blood pressure cuff readings are sparse (2–3 measurements per week, 
 | Model Tier | Daily BP Mean ROC-AUC | Sparse BP Mean ROC-AUC ± SD | Sparse BP Mean PR-AUC ± SD | $\Delta$ vs Prev Tier (ROC) | $\Delta$ vs Prev Tier (PR) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **1. EHR Only** | 0.6453 | 0.6297 ± 0.0850 | 0.4214 ± 0.0844 | Baseline | Baseline |
-| **2. EHR + BP Cuff** | 0.8124 | 0.7544 ± 0.0240 | 0.4686 ± 0.0658 | +0.1248 ± 0.0661 (5/5) | +0.0472 ± 0.1402 (4/5) |
-| **3. + Sleep & HRV** | 0.8159 | 0.7816 ± 0.0434 | 0.4859 ± 0.0388 | +0.0271 ± 0.0318 (4/5) | +0.0173 ± 0.0443 (4/5) |
-| **4. Full Twin** | 0.8143 | 0.7844 ± 0.0404 | 0.4929 ± 0.0288 | +0.0029 ± 0.0061 (3/5) | +0.0070 ± 0.0113 (2/5) |
+| **2. EHR + BP Cuff** | 0.8124 | 0.7493 ± 0.0286 | 0.4630 ± 0.0721 | +0.1196 ± 0.0590 (5/5) | +0.0416 ± 0.1487 (4/5) |
+| **3. + Sleep & HRV** | 0.8159 | 0.7810 ± 0.0439 | 0.5247 ± 0.0589 | +0.0317 ± 0.0235 (4/5) | +0.0617 ± 0.1227 (3/5) |
+| **4. Full Twin** | 0.8143 | 0.7844 ± 0.0406 | 0.5026 ± 0.0273 | +0.0035 ± 0.0063 (2/5) | -0.0220 ± 0.0676 (2/5) |
 
-*Observation on Sparse-BP:* The incremental gain from sleep/HRV under sparse BP is **suggestive only** (4/5 seeds, with standard deviation 0.0318 roughly equal to the mean difference +0.0271). While continuous telemetry helps bridge unmeasured cuff intervals, the effect is modest and should not be overstated.
+*Observation on Sparse-BP:* The incremental gain from sleep/HRV under sparse BP is **suggestive only** (4/5 seeds, with standard deviation 0.0235 roughly equal to the mean difference +0.0317). While continuous telemetry helps bridge unmeasured cuff intervals, the effect is modest and should not be overstated.
 
 ---
 

@@ -127,6 +127,7 @@ class AlertService:
                 patient_id=alert.patient_id,
                 alert_id=alert.alert_id,
                 note=f"[Alert Acknowledged by {clinician_name}] {comment}",
+                author=clinician_name,
                 created_at=datetime.now(timezone.utc),
             )
             self.db.add(note)
@@ -165,6 +166,7 @@ class AlertService:
             patient_id=alert.patient_id,
             alert_id=alert.alert_id,
             note=f"[Alert Snoozed for {snooze_hours:.1f}h by {clinician_name}]{reason_str}",
+            author=clinician_name,
             created_at=now,
         )
         self.db.add(note)
@@ -192,6 +194,7 @@ class AlertService:
             patient_id=alert.patient_id,
             alert_id=alert.alert_id,
             note=f"[Marked False Positive by {clinician_name}] Reason: {reason}",
+            author=clinician_name,
             created_at=datetime.now(timezone.utc),
         )
         self.db.add(note)
@@ -200,12 +203,19 @@ class AlertService:
         self.db.refresh(alert)
         return alert
 
-    def add_clinician_note(self, patient_id: str, note_text: str, alert_id: Optional[str] = None) -> ClinicianNote:
+    def add_clinician_note(
+        self,
+        patient_id: str,
+        note_text: str,
+        alert_id: Optional[str] = None,
+        author: Optional[str] = "Dr. Clinician",
+    ) -> ClinicianNote:
         """Add clinical documentation note."""
         note = ClinicianNote(
             patient_id=patient_id,
             alert_id=alert_id,
             note=note_text,
+            author=author,
             created_at=datetime.now(timezone.utc),
         )
         self.db.add(note)

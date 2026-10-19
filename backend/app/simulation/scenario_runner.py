@@ -25,7 +25,7 @@ class SimulationStatus:
 
     is_running: bool = False
     patient_count: int = 0
-    step_seconds: float = 10.0
+    step_seconds: float = 5.0
     current_simulated_date: str = ""
     active_scenario: Optional[str] = None
     last_tick_at: Optional[str] = None
@@ -38,7 +38,7 @@ class ScenarioRunner:
 
     def __init__(
         self,
-        step_seconds: float = 10.0,
+        step_seconds: float = 5.0,
         on_reading_generated: Optional[Callable[[Dict[str, Any]], Any]] = None,
         on_day_generated: Optional[Callable[[str, List[Dict[str, Any]]], Any]] = None,
     ) -> None:
@@ -244,13 +244,11 @@ class ScenarioRunner:
                     new_rec = self.step_patient_day(patient, prev_rec, day_idx, now_utc)
                     latest_records[patient.patient_id] = new_rec
 
-                    # Build sensor readings without future dates
-                    readings = new_rec.to_sensor_readings(now_utc - timedelta(days=1))
-                    for r in readings:
-                        r_dt = datetime.fromisoformat(r["recorded_at"])
-                        if r_dt > now_utc:
-                            r["recorded_at"] = now_utc.isoformat()
-                            r["ingested_at"] = now_utc.isoformat()
+                    # Anchor base so that rec_date matches simulated day with distinct diurnal timestamps
+                    sim_day_base = (now_utc - timedelta(days=new_rec.day_index)).replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                    readings = new_rec.to_sensor_readings(sim_day_base)
 
                     if self.on_day_generated:
                         await self.on_day_generated(patient.patient_id, readings)

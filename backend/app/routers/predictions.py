@@ -6,8 +6,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from backend.app.auth import get_current_user
 from backend.app.config import settings
 from backend.app.database import get_db
+from backend.app.models import User
 from backend.app.schemas import (
     AlertAcknowledgeRequest,
     AlertResponse,
@@ -36,7 +38,11 @@ def get_operating_thresholds():
 
 
 @router.get("/api/patients/{patient_id}/risk", response_model=PredictionResponse)
-def get_patient_risk(patient_id: str, db: Session = Depends(get_db)):
+def get_patient_risk(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Retrieve most recent 24-hour hypertensive episode risk forecast."""
     ehr = EHRService(db)
     patient = ehr.get_patient(patient_id)
@@ -105,6 +111,7 @@ def get_patient_risk(patient_id: str, db: Session = Depends(get_db)):
 def get_patient_risk_history(
     patient_id: str,
     limit: int = Query(default=30, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Retrieve historical prediction trajectory for longitudinal risk plotting."""
@@ -143,6 +150,7 @@ def get_patient_risk_history(
 def get_patient_alerts(
     patient_id: str,
     limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Retrieve active and historical clinical alerts for a patient."""
@@ -154,13 +162,19 @@ def get_patient_alerts(
 def acknowledge_alert(
     alert_id: str,
     payload: AlertAcknowledgeRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Acknowledge a high-risk clinical alert with optional note."""
+    clinician_identity = (
+        payload.clinician_name
+        if (payload.clinician_name and payload.clinician_name != "Dr. Clinician")
+        else (current_user.full_name or current_user.username or "Dr. Clinician")
+    )
     alert_svc = AlertService(db)
     alert = alert_svc.acknowledge_alert(
         alert_id=alert_id,
-        clinician_name=payload.clinician_name,
+        clinician_name=clinician_identity,
         comment=payload.comment,
     )
     if not alert:
@@ -172,14 +186,20 @@ def acknowledge_alert(
 def snooze_alert(
     alert_id: str,
     payload: AlertSnoozeRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Snooze a clinical alert with duration and documented reason."""
+    clinician_identity = (
+        payload.clinician_name
+        if (payload.clinician_name and payload.clinician_name != "Dr. Clinician")
+        else (current_user.full_name or current_user.username or "Dr. Clinician")
+    )
     alert_svc = AlertService(db)
     try:
         alert = alert_svc.snooze_alert(
             alert_id=alert_id,
-            clinician_name=payload.clinician_name,
+            clinician_name=clinician_identity,
             snooze_hours=payload.snooze_hours,
             reason=payload.reason,
         )
@@ -195,13 +215,19 @@ def snooze_alert(
 def mark_false_positive(
     alert_id: str,
     payload: FalsePositiveRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Mark an alert as false positive for model safety auditing."""
+    clinician_identity = (
+        payload.clinician_name
+        if (payload.clinician_name and payload.clinician_name != "Dr. Clinician")
+        else (current_user.full_name or current_user.username or "Dr. Clinician")
+    )
     alert_svc = AlertService(db)
     alert = alert_svc.mark_false_positive(
         alert_id=alert_id,
-        clinician_name=payload.clinician_name,
+        clinician_name=clinician_identity,
         reason=payload.reason,
     )
     if not alert:
