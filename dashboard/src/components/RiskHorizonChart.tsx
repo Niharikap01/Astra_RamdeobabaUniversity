@@ -6,7 +6,7 @@
 
 import React, { useMemo } from "react";
 import { EChart } from "./EChart";
-import { AlertCircle, Clock, Pill, ShieldAlert, Sparkles } from "lucide-react";
+import { AlertCircle, Clock, Sparkles } from "lucide-react";
 import { RiskHorizonResponse } from "../types";
 import { TOKENS } from "../styles/tokens";
 

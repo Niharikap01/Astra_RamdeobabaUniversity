@@ -5,11 +5,10 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { Activity, Calendar, CheckCircle2, ChevronRight, Info, X } from "lucide-react";
+import { Activity, Calendar, Info, X } from "lucide-react";
 import { DailyReadingItem, PersonalBaseline30d } from "../types";
 import { EChart } from "./EChart";
 import { DataTableToggle } from "./DataTableToggle";
-import { TOKENS } from "../styles/tokens";
 
 interface BloodPressureTrendCardProps {
   series: DailyReadingItem[];

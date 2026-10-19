@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { Lock, Shield, User, AlertCircle, CheckCircle2, Stethoscope, Key } from "lucide-react";
+import { Lock, Shield, User, AlertCircle, Stethoscope, Key } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
 export const LoginModal: React.FC = () => {
-  const { showLoginModal, login, user, isAuthenticated, closeLoginModal } = useAuth();
+  const { showLoginModal, login, isAuthenticated } = useAuth();
   const [username, setUsername] = useState("dr_clinician");
   const [password, setPassword] = useState("nightwatch2026");
   const [isLoading, setIsLoading] = useState(false);

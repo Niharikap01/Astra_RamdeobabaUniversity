@@ -5,8 +5,8 @@
  */
 
 import React, { useMemo } from "react";
-import { AlertTriangle, CheckCircle2, Info, Moon, Shield, Zap } from "lucide-react";
-import { RadarAxisValue, SleepFingerprintData } from "../types";
+import { AlertTriangle, CheckCircle2, Moon } from "lucide-react";
+import { SleepFingerprintData } from "../types";
 import { EChart } from "./EChart";
 import { DataTableToggle } from "./DataTableToggle";
 

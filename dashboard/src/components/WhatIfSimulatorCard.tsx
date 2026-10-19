@@ -11,19 +11,13 @@ import {
   ArrowRight,
   ArrowUpRight,
   Bookmark,
-  BookmarkCheck,
-  CheckCircle2,
-  Clock,
-  HelpCircle,
   Info,
   Moon,
   Pill,
-  RefreshCw,
   RotateCcw,
   Sliders,
   Sparkles,
   Trash2,
-  TrendingDown,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -209,6 +203,11 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
           <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
             <Sliders className="w-4 h-4 text-purple-400" />
             Counterfactual What-If Simulator
+            {isSimulating && (
+              <span className="text-[10px] font-mono text-purple-400 animate-pulse">
+                Simulating...
+              </span>
+            )}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Model sustained lifestyle or pharmacological interventions over the coming week.

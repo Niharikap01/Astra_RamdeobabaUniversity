@@ -6,17 +6,12 @@
 
 import React, { useState } from "react";
 import {
-  AlertCircle,
-  AlertTriangle,
-  Bell,
   CheckCircle2,
   Clock,
   Eye,
   MessageSquare,
-  MoreVertical,
   ShieldAlert,
   X,
-  Zap,
 } from "lucide-react";
 import { AlertResponse } from "../types";
 

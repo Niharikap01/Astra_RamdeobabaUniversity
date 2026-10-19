@@ -6,14 +6,11 @@
 import React from "react";
 import {
   Activity,
-  Calendar,
   Clock,
   FileText,
   Heart,
   Moon,
-  PlusCircle,
   RotateCcw,
-  ShieldAlert,
   Sparkles,
   Table,
 } from "lucide-react";

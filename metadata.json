@@ -1,6 +1,0 @@
-{
-  "name": "NightWatch",
-  "description": "A Sleep-Aware Digital Twin for Proactive Hypertension Risk Prediction",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

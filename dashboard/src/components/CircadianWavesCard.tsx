@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo } from "react";
-import { Activity, Heart, Info, Moon, Zap } from "lucide-react";
+import { Heart, Moon, Zap } from "lucide-react";
 import { DailyReadingItem, PersonalBaseline30d } from "../types";
 import { EChart } from "./EChart";
 import { DataTableToggle } from "./DataTableToggle";

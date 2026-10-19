@@ -4,7 +4,7 @@
  */
 
 import React from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight, Info, ShieldAlert, TrendingUp } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { PredictionResponse } from "../types";
 
 interface RiskSummaryCardProps {

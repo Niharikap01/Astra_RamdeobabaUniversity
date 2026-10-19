@@ -9,26 +9,18 @@
  * Accessible with visible focus, reduced-motion controls, and Nocturne Dark theme.
  */
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Activity,
   AlertOctagon,
   AlertTriangle,
-  BarChart3,
-  CheckCircle2,
-  Clock,
   GitCommit,
   Heart,
   Layers,
   Moon,
-  Radar,
   RefreshCw,
-  Shield,
   Sliders,
-  Sparkles,
   TrendingUp,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 import { api, createTwinWebSocket } from "./services/api";
 import {

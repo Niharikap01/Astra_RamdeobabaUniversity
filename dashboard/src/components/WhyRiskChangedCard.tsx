@@ -6,8 +6,8 @@
  */
 
 import React, { useMemo } from "react";
-import { AlertCircle, ArrowDownRight, ArrowUpRight, CheckCircle2, GitCommit, HelpCircle, Info, ShieldAlert } from "lucide-react";
-import { FactorChangeItem, WhyRiskChangedResponse } from "../types";
+import { ArrowDownRight, ArrowUpRight, GitCommit, Info } from "lucide-react";
+import { WhyRiskChangedResponse } from "../types";
 import { EChart } from "./EChart";
 import { DataTableToggle } from "./DataTableToggle";
 
@@ -51,7 +51,7 @@ export const WhyRiskChangedCard: React.FC<WhyRiskChangedCardProps> = ({
     );
   }
 
-  const { factors, current_risk_pct, previous_risk_pct, risk_delta_pct, summary, trust_statement } = data;
+  const { factors, current_risk_pct, previous_risk_pct, risk_delta_pct, trust_statement } = data;
 
   // Single-line written summary generated from real data
   const oneLineSummary = useMemo(() => {

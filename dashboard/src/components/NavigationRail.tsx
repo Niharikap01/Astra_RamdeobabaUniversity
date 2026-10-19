@@ -6,13 +6,11 @@
 import React, { useState } from "react";
 import {
   Activity,
-  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   LogOut,
   Moon,
   Play,
-  RefreshCw,
   Search,
   Sliders,
   Square,

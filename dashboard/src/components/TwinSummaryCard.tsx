@@ -5,8 +5,8 @@
  */
 
 import React from "react";
-import { Activity, Clock, Heart, Moon, Pill, Shield, TrendingDown, TrendingUp, Zap } from "lucide-react";
-import { DynamicState, PersonalBaseline30d, StaticProfile } from "../types";
+import { Activity, Heart, Moon, Pill, Shield, Zap } from "lucide-react";
+import { DynamicState, PersonalBaseline30d } from "../types";
 
 interface TwinSummaryCardProps {
   dynamicState?: DynamicState | null;
@@ -47,7 +47,6 @@ export const TwinSummaryCard: React.FC<TwinSummaryCardProps> = ({
   const sleepDelta = formatDelta(dynamicState.sleep_last_night, baseline.sleep_duration, "h", false);
   const hrvDelta = formatDelta(dynamicState.hrv_last_night, baseline.hrv_rmssd, "ms", false);
   const rhrDelta = formatDelta(dynamicState.resting_hr_last_night, baseline.resting_hr, "bpm", true);
-  const stepsDelta = formatDelta(dynamicState.steps_yesterday, baseline.steps, "steps", false);
 
   const getStatusBadge = (status: "favorable" | "warning" | "neutral") => {
     if (status === "warning") {
