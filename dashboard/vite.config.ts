@@ -28,6 +28,21 @@ export default defineConfig(() => {
         '/ws': {
           target: 'ws://127.0.0.1:8000',
           ws: true,
+          configure: (proxy) => {
+            proxy.on('error', (err: any) => {
+              if (err?.code === 'ECONNABORTED' || err?.code === 'ECONNRESET') {
+                return;
+              }
+              console.error('[vite] ws proxy error:', err?.message || err);
+            });
+            proxy.on('proxyReqWs', (_proxyReq, _req, socket: any) => {
+              socket.on('error', (err: any) => {
+                if (err?.code === 'ECONNABORTED' || err?.code === 'ECONNRESET') {
+                  return;
+                }
+              });
+            });
+          },
         },
         '/health': {
           target: 'http://127.0.0.1:8000',

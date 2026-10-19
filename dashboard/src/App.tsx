@@ -57,10 +57,13 @@ import { SleepFingerprintCard } from "./components/SleepFingerprintCard";
 import { WhatIfSimulatorCard } from "./components/WhatIfSimulatorCard";
 import { LoginModal } from "./components/LoginModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { useAuth } from "./context/AuthContext";
 
 type ActiveTabType = "overview" | "what-if" | "fingerprint" | "bp-trend" | "circadian" | "attribution";
 
 export default function App() {
+  const { isAuthenticated } = useAuth();
+
   // Theme & Accessibility (Dark theme only per specification)
   const theme: "dark" = "dark";
   const [reducedMotion, setReducedMotion] = useState<boolean>(false);
@@ -94,8 +97,9 @@ export default function App() {
   const [isAlertDrawerOpen, setIsAlertDrawerOpen] = useState<boolean>(true);
   const [isTableView, setIsTableView] = useState<boolean>(false);
 
-  // Ref for polling interval
+  // Ref for polling interval & live WS state
   const pollingRef = useRef<any>(null);
+  const wsConnectedRef = useRef<boolean>(false);
 
   // Time-ago ticker
   useEffect(() => {
@@ -137,7 +141,7 @@ export default function App() {
 
   useEffect(() => {
     loadInitialData();
-  }, []);
+  }, [loadInitialData, isAuthenticated]);
 
   // Load Selected Patient Data
   const loadPatientData = useCallback(
@@ -211,17 +215,19 @@ export default function App() {
           api.getSleepFingerprint(selectedPatientId).then(setSleepFingerprint).catch(() => {});
         },
         (connected) => {
+          wsConnectedRef.current = connected;
           setWsConnected(connected);
         }
       );
     } catch (e) {
       console.warn("WebSocket init error:", e);
+      wsConnectedRef.current = false;
       setWsConnected(false);
     }
 
     // Polling fallback when WS is inactive
     pollingRef.current = setInterval(() => {
-      if (!wsConnected && selectedPatientId) {
+      if (!wsConnectedRef.current && selectedPatientId) {
         api.getPatientTwin(selectedPatientId).then((t) => {
           setTwin(t);
           setLastUpdatedTime(new Date());
@@ -237,7 +243,7 @@ export default function App() {
       if (cleanupWs) cleanupWs();
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
-  }, [selectedPatientId, wsConnected]);
+  }, [selectedPatientId]);
 
   // Simulation Controls
   const handleToggleSimulation = async () => {

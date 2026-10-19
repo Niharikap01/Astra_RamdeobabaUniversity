@@ -247,15 +247,16 @@ export function createTwinWebSocket(
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         onStatusChange?.(false);
-        if (!closedManually) {
+        // Do not auto-reconnect if closed manually or policy violation (unauthorized 1008/4401)
+        if (!closedManually && event?.code !== 1008 && event?.code !== 4401) {
           reconnectTimer = setTimeout(connect, 3000);
         }
       };
 
       ws.onerror = () => {
-        ws?.close();
+        onStatusChange?.(false);
       };
     } catch {
       onStatusChange?.(false);
@@ -270,6 +271,10 @@ export function createTwinWebSocket(
   return () => {
     closedManually = true;
     clearTimeout(reconnectTimer);
-    ws?.close();
+    try {
+      ws?.close();
+    } catch {
+      // ignore
+    }
   };
 }
