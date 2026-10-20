@@ -154,7 +154,7 @@ def add_patient_note(
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found.")
 
-    author_name = payload.author or current_user.full_name or current_user.username
+    author_name = current_user.full_name or current_user.username
     alert_svc = AlertService(db)
     note = alert_svc.add_clinician_note(
         patient_id=patient_id,

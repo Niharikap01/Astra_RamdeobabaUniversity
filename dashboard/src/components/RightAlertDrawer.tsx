@@ -19,8 +19,8 @@ import { useAuth } from "../context/AuthContext";
 interface RightAlertDrawerProps {
   alerts: AlertResponse[];
   onAcknowledge: (alertId: string) => void;
-  onSnooze: (alertId: string, hours: number, reason?: string) => void;
-  onFalsePositive: (alertId: string, reason?: string) => void;
+  onSnooze: (alertId: string, hours: number, reason: string) => void;
+  onFalsePositive: (alertId: string, reason: string) => void;
   onRequestRecheck: () => void;
   onAddNote: () => void;
   isOpen: boolean;
@@ -60,12 +60,12 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
       onSnooze(
         selectedAlertForAction.alert_id,
         snoozeHours,
-        reasonText.trim() || undefined
+                reasonText.trim()
       );
     } else if (actionType === "false_positive") {
       onFalsePositive(
         selectedAlertForAction.alert_id,
-        reasonText.trim() || undefined
+                reasonText.trim()
       );
     }
 
@@ -350,9 +350,9 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                 rows={3}
                 className="w-full p-2.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-400"
               />
-              {actionType === "snooze" && !reasonText.trim() && (
+              {(actionType === "snooze" || actionType === "false_positive") && reasonText.trim().length < 3 && (
                 <span className="text-[11px] text-rose-400 mt-1 block">
-                  A clinical reason must be provided before snoozing this alert.
+                  Enter a reason of at least 3 characters before continuing.
                 </span>
               )}
             </div>
@@ -369,7 +369,7 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                 Cancel
               </button>
               <button
-                disabled={actionType === "snooze" && !reasonText.trim()}
+                disabled={(actionType === "snooze" || actionType === "false_positive") && reasonText.trim().length < 3}
                 onClick={() => {
                   if (actionType === ("note" as any)) {
                     onAddNote();
@@ -380,7 +380,7 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                   }
                 }}
                 className={`px-4 py-1.5 rounded-lg text-white text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-purple-400 ${
-                  actionType === "snooze" && !reasonText.trim()
+                  (actionType === "snooze" || actionType === "false_positive") && reasonText.trim().length < 3
                     ? "bg-slate-700 text-slate-400 cursor-not-allowed"
                     : "bg-purple-600 hover:bg-purple-500"
                 }`}

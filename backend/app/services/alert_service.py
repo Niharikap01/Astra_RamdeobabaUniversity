@@ -110,7 +110,7 @@ class AlertService:
     def acknowledge_alert(
         self,
         alert_id: str,
-        clinician_name: str = "Dr. Clinician",
+        clinician_name: str,
         comment: Optional[str] = None,
     ) -> Optional[Alert]:
         """Mark an open alert as acknowledged."""
@@ -139,12 +139,12 @@ class AlertService:
     def snooze_alert(
         self,
         alert_id: str,
-        clinician_name: str = "Dr. Clinician",
-        snooze_hours: float = 4.0,
+        clinician_name: str,
+        snooze_hours: float,
         reason: Optional[str] = None,
     ) -> Optional[Alert]:
-        if not reason or not reason.strip():
-            raise ValueError("A documented clinical reason is required to snooze an alert.")
+        if not reason or len(reason.strip()) < 3:
+            raise ValueError("A reason of at least 3 characters is required to snooze an alert.")
 
         alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
         if not alert:
@@ -178,8 +178,8 @@ class AlertService:
     def mark_false_positive(
         self,
         alert_id: str,
-        clinician_name: str = "Dr. Clinician",
-        reason: str = "Situational anomaly",
+        clinician_name: str,
+        reason: str,
     ) -> Optional[Alert]:
         """Mark alert as false positive for model audit."""
         alert = self.db.execute(select(Alert).where(Alert.alert_id == alert_id)).scalar_one_or_none()
@@ -208,7 +208,7 @@ class AlertService:
         patient_id: str,
         note_text: str,
         alert_id: Optional[str] = None,
-        author: Optional[str] = "Dr. Clinician",
+        author: Optional[str] = None,
     ) -> ClinicianNote:
         """Add clinical documentation note."""
         note = ClinicianNote(

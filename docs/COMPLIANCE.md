@@ -24,7 +24,7 @@
 | H15 | repository credential/privacy audit | MISSING | Repository-wide scan NOT RUN. |
 | H16 | .github/workflows/ci.yml | PARTIAL | Workflow present; CI NOT RUN. |
 | A1 | .venv_check/Scripts/python.exe -m pytest -q | PARTIAL | All 8 test files passed; full suite 49 passed in 44.33 s; prior hang not reproduced. |
-| A2 | auth, API, UI role controls | PARTIAL | Source paths present; role rules not audited in this pass. |
+| A2 | auth, API, UI role controls | PARTIAL | Alert reasons are required in API/UI; alert acknowledgements and notes use token identity. Full role audit remains incomplete; see backend/app/routers/predictions.py and patients.py. |
 | A3 | ml/artifacts/metrics.json; docs/evaluation_report.md; docs/model_card.md | PARTIAL | Metrics JSON has corrected sparse fields; report/model-card agreement not checked. |
 | B1 | Risk Horizon API and dashboard | PARTIAL | Presence only; behavior not checked. |
 | B2 | What-If API and docs/whatif_effects.md | PARTIAL | Presence only; behavior not checked. |

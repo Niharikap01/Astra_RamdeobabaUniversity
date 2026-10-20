@@ -132,22 +132,22 @@ export const api = {
   getPatientAlerts: (id: string) =>
     fetchJson<AlertResponse[]>(`/api/patients/${id}/alerts`),
 
-  acknowledgeAlert: (alertId: string, clinicianName = "Dr. Clinician", comment?: string) =>
+  acknowledgeAlert: (alertId: string, comment?: string) =>
     fetchJson<AlertResponse>(`/api/alerts/${alertId}/acknowledge`, {
       method: "POST",
-      body: JSON.stringify({ clinician_name: clinicianName, comment }),
+      body: JSON.stringify({ comment }),
     }),
 
-  snoozeAlert: (alertId: string, clinicianName = "Dr. Clinician", snoozeHours = 4.0, reason?: string) =>
+  snoozeAlert: (alertId: string, snoozeHours: number, reason: string) =>
     fetchJson<AlertResponse>(`/api/alerts/${alertId}/snooze`, {
       method: "POST",
-      body: JSON.stringify({ clinician_name: clinicianName, snooze_hours: snoozeHours, reason: reason || null }),
+      body: JSON.stringify({ snooze_hours: snoozeHours, reason }),
     }),
 
-  markFalsePositive: (alertId: string, clinicianName = "Dr. Clinician", reason?: string) =>
+  markFalsePositive: (alertId: string, reason: string) =>
     fetchJson<AlertResponse>(`/api/alerts/${alertId}/false-positive`, {
       method: "POST",
-      body: JSON.stringify({ clinician_name: clinicianName, reason: reason || null }),
+      body: JSON.stringify({ reason }),
     }),
 
   addClinicianNote: (patientId: string, note: string, alertId?: string) =>

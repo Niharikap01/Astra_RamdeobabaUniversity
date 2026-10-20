@@ -2,8 +2,8 @@
 
 | Item | Status |
 |---|---|
-| A1 pytest hang diagnosis and fix | PARTIAL (all 8 test files passed; full suite 49 passed in 44.33 s; prior >16 min hang not reproduced, root cause not established) |
-| A2 trust and role defects | SKIPPED (budget closeout; role/UI/API audit not run) |
+| A1 pytest hang diagnosis and fix | PARTIAL (prior full suite 49 passed in 44.33 s; latest bounded alert-file run passed 3 tests then stalled at test_alerts::test_snooze_requires_reason; cause not isolated) |
+| A2 trust and role defects | PARTIAL (alert reasons are required and actor names derive from the token; full role/UI/API audit not completed) |
 | A3 sparse-BP statistics and honest headlines | PARTIAL (metrics.json contains fold/pooled/t-test fields; source/report/model-card regeneration not revalidated) |
 | B1 Risk Horizon | SKIPPED (budget closeout; NOT RUN) |
 | B2 What-If | SKIPPED (budget closeout; NOT RUN) |

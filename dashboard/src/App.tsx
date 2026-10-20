@@ -259,7 +259,7 @@ export default function App() {
   // Alert Actions
   const handleAcknowledgeAlert = async (alertId: string) => {
     try {
-      await api.acknowledgeAlert(alertId, "Dr. Clinician", "Reviewed telemetry");
+      await api.acknowledgeAlert(alertId);
       const updated = await api.getPatientAlerts(selectedPatientId);
       setAlerts(updated);
     } catch (e) {
@@ -267,9 +267,9 @@ export default function App() {
     }
   };
 
-  const handleSnoozeAlert = async (alertId: string, hours: number, reason?: string) => {
+  const handleSnoozeAlert = async (alertId: string, hours: number, reason: string) => {
     try {
-      await api.snoozeAlert(alertId, "Dr. Clinician", hours, reason || "Awaiting repeat seated home BP reading");
+      await api.snoozeAlert(alertId, hours, reason);
       const updated = await api.getPatientAlerts(selectedPatientId);
       setAlerts(updated);
     } catch (e) {
@@ -277,9 +277,9 @@ export default function App() {
     }
   };
 
-  const handleFalsePositiveAlert = async (alertId: string, reason?: string) => {
+  const handleFalsePositiveAlert = async (alertId: string, reason: string) => {
     try {
-      await api.markFalsePositive(alertId, "Dr. Clinician", reason || "Uncalibrated cuff or acute non-hypertensive excursion");
+      await api.markFalsePositive(alertId, reason);
       const updated = await api.getPatientAlerts(selectedPatientId);
       setAlerts(updated);
     } catch (e) {

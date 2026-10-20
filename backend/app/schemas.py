@@ -153,12 +153,10 @@ class AlertResponse(BaseModel):
 
 
 class AlertAcknowledgeRequest(BaseModel):
-    clinician_name: str = "Dr. Clinician"
     comment: Optional[str] = None
 
 
 class AlertSnoozeRequest(BaseModel):
-    clinician_name: str = "Dr. Clinician"
     snooze_hours: float = Field(default=4.0, ge=0.5, le=72.0)
     reason: str = Field(min_length=3, description="Clinical reason for snoozing alert")
 
@@ -171,8 +169,7 @@ class ThresholdsResponse(BaseModel):
 
 
 class FalsePositiveRequest(BaseModel):
-    clinician_name: str = "Dr. Clinician"
-    reason: Optional[str] = None
+    reason: str = Field(min_length=3, description="Reason for marking this alert as a false positive")
 
 
 class ClinicianNoteCreate(BaseModel):

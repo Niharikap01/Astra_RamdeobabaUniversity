@@ -166,11 +166,7 @@ def acknowledge_alert(
     db: Session = Depends(get_db),
 ):
     """Acknowledge a high-risk clinical alert with optional note."""
-    clinician_identity = (
-        payload.clinician_name
-        if (payload.clinician_name and payload.clinician_name != "Dr. Clinician")
-        else (current_user.full_name or current_user.username or "Dr. Clinician")
-    )
+    clinician_identity = current_user.full_name or current_user.username
     alert_svc = AlertService(db)
     alert = alert_svc.acknowledge_alert(
         alert_id=alert_id,
@@ -190,11 +186,7 @@ def snooze_alert(
     db: Session = Depends(get_db),
 ):
     """Snooze a clinical alert with duration and documented reason."""
-    clinician_identity = (
-        payload.clinician_name
-        if (payload.clinician_name and payload.clinician_name != "Dr. Clinician")
-        else (current_user.full_name or current_user.username or "Dr. Clinician")
-    )
+    clinician_identity = current_user.full_name or current_user.username
     alert_svc = AlertService(db)
     try:
         alert = alert_svc.snooze_alert(
@@ -219,11 +211,9 @@ def mark_false_positive(
     db: Session = Depends(get_db),
 ):
     """Mark an alert as false positive for model safety auditing."""
-    clinician_identity = (
-        payload.clinician_name
-        if (payload.clinician_name and payload.clinician_name != "Dr. Clinician")
-        else (current_user.full_name or current_user.username or "Dr. Clinician")
-    )
+    if len(payload.reason.strip()) < 3:
+        raise HTTPException(status_code=422, detail="A reason of at least 3 characters is required.")
+    clinician_identity = current_user.full_name or current_user.username
     alert_svc = AlertService(db)
     alert = alert_svc.mark_false_positive(
         alert_id=alert_id,
