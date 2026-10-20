@@ -25,4 +25,5 @@
 | E0 README refresh/link check/final commit | PARTIAL (metrics block generated, link checker passed; API/env/tree generators missing) |
 | E1 clean-clone smoke test | SKIPPED (budget closeout; NOT RUN) |
 | E2 compliance/handoff/TODO | DONE (evidence ledger and bounded handoff/TODO created) |
-| E3 close-out | TODO |
+| E3 close-out | DONE (verified facts and remaining work recorded in docs/HANDOFF.md and docs/TODO.md) |
+
