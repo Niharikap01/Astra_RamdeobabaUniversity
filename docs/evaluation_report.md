@@ -37,13 +37,13 @@ The pooled out-of-fold AUC and its patient-cluster confidence interval are the h
 
 The paired comparison is EHR + BP + sleep/HRV versus EHR + BP. Each availability setting uses the same patient-grouped 5-fold CV; the reported difference is the wearable model's ROC-AUC minus the BP-only model's ROC-AUC. The CI resamples whole patients from pooled out-of-fold predictions.
 
-| BP availability | Paired Δ ROC-AUC (Mean ± SD) | Wins out of 5 | Patient-cluster bootstrap 95% CI for Δ | Conclusion |
-| :--- | :---: | :---: | :---: | :--- |
-| **Daily** | +0.0035 ± 0.0093 | 3/5 | [-0.0093, +0.0166] | Wearable gain is not supported |
-| **2–3 readings/week** | +0.0186 ± 0.0222 | 4/5 | [+0.0165, +0.0579] | Wearable gain is supported |
-| **1 reading/week** | +0.0474 ± 0.0386 | 4/5 | [+0.0292, +0.0960] | Wearable gain is supported |
+| BP availability | Fold-mean paired ΔAUC ± SD (n=5) | Fold-mean wins / 5 | Pooled OOF paired ΔAUC | Pooled bootstrap mean ΔAUC | Pooled patient-cluster bootstrap 95% CI | Fold one-sample t-test p-value | Conclusion |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Daily** | +0.0035 ± 0.0093 | 3/5 | +0.0040 | +0.0042 | [-0.0093, +0.0166] | 0.4891 | not supported |
+| **2–3 readings/week** | +0.0186 ± 0.0222 | 4/5 | +0.0360 | +0.0364 | [+0.0165, +0.0579] | 0.1689 | suggestive (CI excludes 0 but fold evidence weak) |
+| **1 reading/week** | +0.0474 ± 0.0386 | 4/5 | +0.0620 | +0.0619 | [+0.0292, +0.0960] | 0.0702 | supported |
 
-A wearable gain is supported for a setting only when its patient-cluster bootstrap CI excludes zero and the wearable model wins at least 4 of 5 folds. The figure is `figures/sparse_bp_wearable_gain.png`.
+A wearable gain is supported only when the pooled patient-cluster bootstrap 95% CI excludes zero, the wearable model wins at least 4 of 5 folds, and the one-sample t-test on the five fold differences has p < 0.10. When the pooled CI excludes zero but either fold criterion fails, the result is “suggestive (CI excludes 0 but fold evidence weak)”; otherwise it is “not supported”. The figure is `figures/sparse_bp_wearable_gain.png`.
 
 ## 4. Operating Points From `ml/artifacts/thresholds.json`
 

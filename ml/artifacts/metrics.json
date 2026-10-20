@@ -197,6 +197,7 @@
           "win_count": 3,
           "wins": "3/5",
           "pooled_oof_roc_auc_difference": 0.004,
+          "pooled_bootstrap_mean_roc_auc_difference": 0.0042,
           "patient_cluster_bootstrap_ci95": [
             -0.0093,
             0.0166
@@ -206,7 +207,10 @@
             "clusters": 200
           },
           "ci_excludes_zero": false,
+          "fold_one_sample_ttest_statistic": 0.760859,
+          "fold_one_sample_ttest_p_value": 0.489124,
           "supported": false,
+          "suggestive": false,
           "conclusion": "not supported"
         }
       },
@@ -250,6 +254,7 @@
           "win_count": 4,
           "wins": "4/5",
           "pooled_oof_roc_auc_difference": 0.036,
+          "pooled_bootstrap_mean_roc_auc_difference": 0.0364,
           "patient_cluster_bootstrap_ci95": [
             0.0165,
             0.0579
@@ -259,8 +264,11 @@
             "clusters": 200
           },
           "ci_excludes_zero": true,
-          "supported": true,
-          "conclusion": "supported"
+          "fold_one_sample_ttest_statistic": 1.676627,
+          "fold_one_sample_ttest_p_value": 0.168922,
+          "supported": false,
+          "suggestive": true,
+          "conclusion": "suggestive (CI excludes 0 but fold evidence weak)"
         }
       },
       "1 reading/week": {
@@ -303,6 +311,7 @@
           "win_count": 4,
           "wins": "4/5",
           "pooled_oof_roc_auc_difference": 0.062,
+          "pooled_bootstrap_mean_roc_auc_difference": 0.0619,
           "patient_cluster_bootstrap_ci95": [
             0.0292,
             0.096
@@ -312,7 +321,10 @@
             "clusters": 200
           },
           "ci_excludes_zero": true,
+          "fold_one_sample_ttest_statistic": 2.45359,
+          "fold_one_sample_ttest_p_value": 0.070174,
           "supported": true,
+          "suggestive": false,
           "conclusion": "supported"
         }
       }

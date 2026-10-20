@@ -25,13 +25,13 @@ The pooled out-of-fold AUC is the headline AUC; the fold mean and SD are reporte
 
 ## Wearable Value Under Sparse BP Availability
 
-| BP availability | Paired Δ ROC-AUC (Mean ± SD) | Wins out of 5 | Patient-cluster bootstrap 95% CI for Δ | Conclusion |
-| :--- | :---: | :---: | :---: | :--- |
-| **Daily** | +0.0035 ± 0.0093 | 3/5 | [-0.0093, +0.0166] | Wearable gain is not supported |
-| **2–3 readings/week** | +0.0186 ± 0.0222 | 4/5 | [+0.0165, +0.0579] | Wearable gain is supported |
-| **1 reading/week** | +0.0474 ± 0.0386 | 4/5 | [+0.0292, +0.0960] | Wearable gain is supported |
+| BP availability | Fold-mean paired ΔAUC ± SD (n=5) | Fold-mean wins / 5 | Pooled OOF paired ΔAUC | Pooled bootstrap mean ΔAUC | Pooled patient-cluster bootstrap 95% CI | Fold one-sample t-test p-value | Conclusion |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **Daily** | +0.0035 ± 0.0093 | 3/5 | +0.0040 | +0.0042 | [-0.0093, +0.0166] | 0.4891 | not supported |
+| **2–3 readings/week** | +0.0186 ± 0.0222 | 4/5 | +0.0360 | +0.0364 | [+0.0165, +0.0579] | 0.1689 | suggestive (CI excludes 0 but fold evidence weak) |
+| **1 reading/week** | +0.0474 ± 0.0386 | 4/5 | +0.0620 | +0.0619 | [+0.0292, +0.0960] | 0.0702 | supported |
 
-Gain is supported only when the patient-cluster CI excludes zero and there are at least 4 wins in 5 folds.
+Gain is supported only when the pooled patient-cluster bootstrap 95% CI excludes zero, there are at least 4 wins in 5 folds, and the one-sample t-test on the five fold differences has p < 0.10. If the pooled CI excludes zero but either fold criterion fails, the result is “suggestive (CI excludes 0 but fold evidence weak)”; otherwise it is “not supported”.
 
 ## Limitations
 

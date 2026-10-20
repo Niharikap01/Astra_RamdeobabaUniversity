@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier, early_stopping
+from scipy.stats import ttest_1samp
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.metrics import (
     auc,
@@ -158,6 +159,7 @@ def compute_cluster_bootstrap_auc_difference_ci(
         differences.append(float(with_auc - without_auc))
 
     return {
+        "mean": round(float(np.mean(differences)), 4),
         "ci95": [round(float(np.percentile(differences, 2.5)), 4), round(float(np.percentile(differences, 97.5)), 4)],
         "bootstraps": n_bootstraps,
         "clusters": len(unique_pids),
@@ -469,6 +471,8 @@ def run_sparse_bp_experiment(
             for fold in range(5)
         ]
         wins = int(sum(difference > 0 for difference in fold_differences))
+        fold_ttest = ttest_1samp(fold_differences, popmean=0.0)
+        fold_ttest_p_value = float(fold_ttest.pvalue)
         ci = compute_cluster_bootstrap_auc_difference_ci(
             base_df.reset_index(drop=True),
             oof_probs["ehr_plus_bp"],
@@ -481,7 +485,15 @@ def run_sparse_bp_experiment(
             - roc_auc_score(availability_df["target"], oof_probs["ehr_plus_bp"])
         )
         ci_excludes_zero = ci["ci95"][0] > 0 or ci["ci95"][1] < 0
-        supported = bool(ci_excludes_zero and wins >= 4)
+        supported = bool(wins >= 4 and ci_excludes_zero and fold_ttest_p_value < 0.10)
+        suggestive = bool(ci_excludes_zero and not supported)
+        conclusion = (
+            "supported"
+            if supported
+            else "suggestive (CI excludes 0 but fold evidence weak)"
+            if suggestive
+            else "not supported"
+        )
         fold_differences_by_setting[setting] = fold_differences
 
         results["availability_settings"][setting] = {
@@ -502,18 +514,22 @@ def run_sparse_bp_experiment(
                 "win_count": wins,
                 "wins": f"{wins}/5",
                 "pooled_oof_roc_auc_difference": round(pooled_difference, 4),
+                "pooled_bootstrap_mean_roc_auc_difference": ci["mean"],
                 "patient_cluster_bootstrap_ci95": ci["ci95"],
                 "patient_cluster_bootstrap": {
                     "bootstraps": ci["bootstraps"],
                     "clusters": ci["clusters"],
                 },
                 "ci_excludes_zero": ci_excludes_zero,
+                "fold_one_sample_ttest_statistic": round(float(fold_ttest.statistic), 6),
+                "fold_one_sample_ttest_p_value": round(fold_ttest_p_value, 6),
                 "supported": supported,
-                "conclusion": "supported" if supported else "not supported",
+                "suggestive": suggestive,
+                "conclusion": conclusion,
             },
         }
 
-    # Plot paired fold estimates and the patient-cluster bootstrap intervals.
+    # Plot fold means, pooled estimates, and patient-cluster bootstrap intervals separately.
     fig, ax = plt.subplots(figsize=(9.5, 5.4))
     y_positions = np.arange(len(settings))[::-1]
     all_bounds = [0.0]
@@ -523,16 +539,21 @@ def run_sparse_bp_experiment(
         mean = gain["roc_auc_difference_mean"]
         sd = gain["roc_auc_difference_sd"]
         ci_low, ci_high = gain["patient_cluster_bootstrap_ci95"]
-        ax.errorbar(mean, y_pos + 0.12, xerr=sd, fmt="o", color="#2563eb", capsize=4,
-                    label="5-fold mean ± SD" if y_pos == y_positions[0] else None)
-        ax.errorbar(gain["pooled_oof_roc_auc_difference"], y_pos - 0.12,
-                    xerr=[[max(0.0, gain["pooled_oof_roc_auc_difference"] - ci_low)],
-                          [max(0.0, ci_high - gain["pooled_oof_roc_auc_difference"])]],
-                    fmt="D", color="#d97706", capsize=4,
-                    label="Pooled OOF difference, patient-cluster 95% CI" if y_pos == y_positions[0] else None)
-        ax.text(1.01, y_pos, f"{gain['wins']} wins; {gain['conclusion']}",
+        pooled_difference = gain["pooled_oof_roc_auc_difference"]
+        bootstrap_mean = gain["pooled_bootstrap_mean_roc_auc_difference"]
+        ax.errorbar(mean, y_pos + 0.20, xerr=sd, fmt="o", color="#2563eb", capsize=4,
+                    label="Fold-mean paired ΔAUC ± SD (n=5)" if y_pos == y_positions[0] else None)
+        ax.scatter(pooled_difference, y_pos, marker="D", color="#d97706",
+                   label="Pooled OOF paired ΔAUC" if y_pos == y_positions[0] else None)
+        ax.errorbar(bootstrap_mean, y_pos - 0.20,
+                    xerr=[[max(0.0, bootstrap_mean - ci_low)],
+                          [max(0.0, ci_high - bootstrap_mean)]],
+                    fmt="s", color="#059669", capsize=4,
+                    label="Pooled bootstrap mean, patient-cluster 95% CI" if y_pos == y_positions[0] else None)
+        ax.text(1.01, y_pos,
+                f"{gain['wins']} wins; p={gain['fold_one_sample_ttest_p_value']:.3f}; {gain['conclusion']}",
                 transform=ax.get_yaxis_transform(), va="center", fontsize=9)
-        all_bounds.extend([mean - sd, mean + sd, ci_low, ci_high])
+        all_bounds.extend([mean - sd, mean + sd, pooled_difference, bootstrap_mean, ci_low, ci_high])
 
     ax.axvline(0, color="#6b7280", linestyle="--", linewidth=1.1)
     ax.set_yticks(y_positions)
@@ -661,15 +682,13 @@ def write_documentation_files(
     for result in settings.values():
         gain = result["wearable_gain"]
         ci_low, ci_high = gain["patient_cluster_bootstrap_ci95"]
-        conclusion = (
-            "Wearable gain is supported"
-            if gain["supported"]
-            else "Wearable gain is not supported"
-        )
         sparse_table_rows.append(
             f"| **{result['label']}** | {gain['roc_auc_difference_mean']:+.4f} ± "
             f"{gain['roc_auc_difference_sd']:.4f} | {gain['wins']} | "
-            f"[{ci_low:+.4f}, {ci_high:+.4f}] | {conclusion} |"
+            f"{gain['pooled_oof_roc_auc_difference']:+.4f} | "
+            f"{gain['pooled_bootstrap_mean_roc_auc_difference']:+.4f} | "
+            f"[{ci_low:+.4f}, {ci_high:+.4f}] | "
+            f"{gain['fold_one_sample_ttest_p_value']:.4f} | {gain['conclusion']} |"
         )
     sparse_table = "\n".join(sparse_table_rows)
 
@@ -712,11 +731,11 @@ The pooled out-of-fold AUC and its patient-cluster confidence interval are the h
 
 The paired comparison is EHR + BP + sleep/HRV versus EHR + BP. Each availability setting uses the same patient-grouped 5-fold CV; the reported difference is the wearable model's ROC-AUC minus the BP-only model's ROC-AUC. The CI resamples whole patients from pooled out-of-fold predictions.
 
-| BP availability | Paired Δ ROC-AUC (Mean ± SD) | Wins out of 5 | Patient-cluster bootstrap 95% CI for Δ | Conclusion |
-| :--- | :---: | :---: | :---: | :--- |
+| BP availability | Fold-mean paired ΔAUC ± SD (n=5) | Fold-mean wins / 5 | Pooled OOF paired ΔAUC | Pooled bootstrap mean ΔAUC | Pooled patient-cluster bootstrap 95% CI | Fold one-sample t-test p-value | Conclusion |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 {sparse_table}
 
-A wearable gain is supported for a setting only when its patient-cluster bootstrap CI excludes zero and the wearable model wins at least 4 of 5 folds. The figure is `figures/sparse_bp_wearable_gain.png`.
+A wearable gain is supported only when the pooled patient-cluster bootstrap 95% CI excludes zero, the wearable model wins at least 4 of 5 folds, and the one-sample t-test on the five fold differences has p < 0.10. When the pooled CI excludes zero but either fold criterion fails, the result is “suggestive (CI excludes 0 but fold evidence weak)”; otherwise it is “not supported”. The figure is `figures/sparse_bp_wearable_gain.png`.
 
 ## 4. Operating Points From `ml/artifacts/thresholds.json`
 
@@ -763,11 +782,11 @@ The pooled out-of-fold AUC is the headline AUC; the fold mean and SD are reporte
 
 ## Wearable Value Under Sparse BP Availability
 
-| BP availability | Paired Δ ROC-AUC (Mean ± SD) | Wins out of 5 | Patient-cluster bootstrap 95% CI for Δ | Conclusion |
-| :--- | :---: | :---: | :---: | :--- |
+| BP availability | Fold-mean paired ΔAUC ± SD (n=5) | Fold-mean wins / 5 | Pooled OOF paired ΔAUC | Pooled bootstrap mean ΔAUC | Pooled patient-cluster bootstrap 95% CI | Fold one-sample t-test p-value | Conclusion |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
 {sparse_table}
 
-Gain is supported only when the patient-cluster CI excludes zero and there are at least 4 wins in 5 folds.
+Gain is supported only when the pooled patient-cluster bootstrap 95% CI excludes zero, there are at least 4 wins in 5 folds, and the one-sample t-test on the five fold differences has p < 0.10. If the pooled CI excludes zero but either fold criterion fails, the result is “suggestive (CI excludes 0 but fold evidence weak)”; otherwise it is “not supported”.
 
 ## Limitations
 
@@ -906,14 +925,21 @@ def main() -> None:
         docs_dir=docs_dir,
     )
 
-    logger.info("Sparse-BP wearable comparison (Δ ROC-AUC, mean ± SD | wins | patient-cluster 95% CI):")
+    logger.info(
+        "Sparse-BP paired results: BP availability | fold-mean paired ΔAUC ± SD (n=5) | "
+        "fold-mean wins/5 | pooled OOF paired ΔAUC | pooled bootstrap mean ΔAUC | "
+        "pooled patient-cluster 95% CI | fold t-test p | conclusion"
+    )
     for result in sparse_res["availability_settings"].values():
         gain = result["wearable_gain"]
         logger.info(
             f"{result['label']}: {gain['roc_auc_difference_mean']:+.4f} ± "
             f"{gain['roc_auc_difference_sd']:.4f} | {gain['wins']} | "
+            f"{gain['pooled_oof_roc_auc_difference']:+.4f} | "
+            f"{gain['pooled_bootstrap_mean_roc_auc_difference']:+.4f} | "
             f"[{gain['patient_cluster_bootstrap_ci95'][0]:+.4f}, "
-            f"{gain['patient_cluster_bootstrap_ci95'][1]:+.4f}] | {gain['conclusion']}"
+            f"{gain['patient_cluster_bootstrap_ci95'][1]:+.4f}] | "
+            f"{gain['fold_one_sample_ttest_p_value']:.4f} | {gain['conclusion']}"
         )
     logger.info("======================================================================")
     logger.info("Robustness and Evaluation Integrity Pipeline Finished Successfully!")
