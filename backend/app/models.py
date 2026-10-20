@@ -155,7 +155,7 @@ class ClinicianNote(Base):
     patient_id = Column(String(64), ForeignKey("patients.patient_id", ondelete="CASCADE"), nullable=False, index=True)
     alert_id = Column(String(64), ForeignKey("alerts.alert_id", ondelete="SET NULL"), nullable=True)
     note = Column(Text, nullable=False)
-    author = Column(String(128), nullable=True, default="Dr. Clinician")
+    author = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     patient = relationship("Patient", back_populates="notes")

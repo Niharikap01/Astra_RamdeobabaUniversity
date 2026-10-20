@@ -23,8 +23,8 @@
 | H14 | docker-compose.yml; Dockerfiles | PARTIAL | Compose file presence only; Docker validation NOT RUN. |
 | H15 | repository credential/privacy audit | MISSING | Repository-wide scan NOT RUN. |
 | H16 | .github/workflows/ci.yml | PARTIAL | Workflow present; CI NOT RUN. |
-| A1 | .venv_check/Scripts/python.exe -m pytest -q | PARTIAL | All 8 test files passed; full suite 49 passed in 44.33 s; prior hang not reproduced. |
-| A2 | auth, API, UI role controls | PARTIAL | Alert reasons are required in API/UI; alert acknowledgements and notes use token identity. Full role audit remains incomplete; see backend/app/routers/predictions.py and patients.py. |
+| A1 | .venv_check/Scripts/python.exe -m pytest -q | MET | Full suite: 49 passed in 33.11 s outside the sandbox. In-sandbox TestClient stalls at Windows socketpair accept. |
+| A2 | auth, API, UI role controls | PARTIAL | Alert reasons required, actors use token identity, and missing coverage/risk deltas/authors remain null. Full role audit remains incomplete; see backend/app/routers/predictions.py, patients.py, and dashboard/src/App.tsx. |
 | A3 | ml/artifacts/metrics.json; docs/evaluation_report.md; docs/model_card.md | PARTIAL | Metrics JSON has corrected sparse fields; report/model-card agreement not checked. |
 | B1 | Risk Horizon API and dashboard | PARTIAL | Presence only; behavior not checked. |
 | B2 | What-If API and docs/whatif_effects.md | PARTIAL | Presence only; behavior not checked. |

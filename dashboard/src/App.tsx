@@ -300,8 +300,8 @@ export default function App() {
   ];
 
   // Coverage check
-  const dataCoverage = riskHorizon?.data_coverage_pct ?? patientProfile?.data_coverage_pct ?? 100;
-  const isCoverageWithheld = dataCoverage < 50;
+  const dataCoverage = riskHorizon?.data_coverage_pct ?? patientProfile?.data_coverage_pct ?? null;
+  const isCoverageWithheld = dataCoverage === null || dataCoverage < 50;
 
   // Login gate: never render clinical data (or fire API calls) before sign-in
   if (!isAuthenticated) {
@@ -409,7 +409,9 @@ export default function App() {
               <div>
                 <p className="font-semibold text-amber-300">Prediction Refused: Insufficient Sensor Telemetry</p>
                 <p className="text-amber-200/80 mt-0.5">
-                  Available coverage ({Math.round(dataCoverage)}%) is below the mandatory 50% clinical safety threshold.
+                  {dataCoverage === null
+                    ? "Coverage is unavailable; confirm data quality before relying on a forecast."
+                    : `Available coverage (${Math.round(dataCoverage)}%) is below the mandatory 50% clinical safety threshold.`}
                   NightWatch will not fabricate forecasts. A verified home blood pressure cuff measurement is required to resume prediction.
                 </p>
               </div>

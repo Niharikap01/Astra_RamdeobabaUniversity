@@ -55,8 +55,17 @@ export const WhyRiskChangedCard: React.FC<WhyRiskChangedCardProps> = ({
 
   // Single-line written summary generated from real data
   const oneLineSummary = useMemo(() => {
-    const directionWord = (risk_delta_pct || 0) >= 0 ? "increased" : "decreased";
-    const deltaAbs = Math.abs(risk_delta_pct || 0);
+    if (
+      risk_delta_pct == null ||
+      previous_risk_pct == null ||
+      !Number.isFinite(risk_delta_pct) ||
+      !Number.isFinite(previous_risk_pct) ||
+      !Number.isFinite(current_risk_pct)
+    ) {
+      return "Risk change is unavailable because a prior estimate is missing.";
+    }
+    const directionWord = risk_delta_pct >= 0 ? "increased" : "decreased";
+    const deltaAbs = Math.abs(risk_delta_pct);
     const topFactor = factors[0];
     const topFactorText = topFactor ? ` primarily associated with ${topFactor.display_name.toLowerCase()}` : "";
     return `Modeled risk ${directionWord} by ${deltaAbs.toFixed(1)}% (from ${previous_risk_pct}% to ${current_risk_pct}%)${topFactorText}.`;
@@ -164,12 +173,18 @@ export const WhyRiskChangedCard: React.FC<WhyRiskChangedCardProps> = ({
             ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-300"
             : "border-slate-700 bg-slate-800/40 text-slate-400"
         }`}>
-          {(risk_delta_pct || 0) > 0 ? (
-            <ArrowUpRight className="w-3.5 h-3.5 text-rose-400" />
+          {risk_delta_pct == null ? (
+            "Risk delta: no data"
           ) : (
-            <ArrowDownRight className="w-3.5 h-3.5 text-emerald-400" />
+            <>
+              {risk_delta_pct > 0 ? (
+                <ArrowUpRight className="w-3.5 h-3.5 text-rose-400" />
+              ) : risk_delta_pct < 0 ? (
+                <ArrowDownRight className="w-3.5 h-3.5 text-emerald-400" />
+              ) : null}
+              Risk Delta: {risk_delta_pct > 0 ? "+" : ""}{risk_delta_pct}%
+            </>
           )}
-          Risk Delta: {(risk_delta_pct || 0) > 0 ? `+${risk_delta_pct}%` : `${risk_delta_pct}%`}
         </div>
       </div>
 
