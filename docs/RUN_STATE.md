@@ -2,7 +2,7 @@
 
 | Item | Status |
 |---|---|
-| A1 pytest hang diagnosis and fix | TODO |
+| A1 pytest hang diagnosis and fix | PARTIAL (all 8 test files passed; full suite 49 passed in 44.33 s; prior >16 min hang not reproduced, root cause not established) |
 | A2 trust and role defects | TODO |
 | A3 sparse-BP statistics and honest headlines | TODO |
 | B1 Risk Horizon | TODO |
@@ -26,3 +26,4 @@
 | E1 clean-clone smoke test | TODO |
 | E2 compliance/handoff/TODO | TODO |
 | E3 close-out | TODO |
+
