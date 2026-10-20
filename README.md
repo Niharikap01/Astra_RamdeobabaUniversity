@@ -9,10 +9,10 @@ NightWatch fuses synthetic EHR records, simulated wearable context (sleep, HRV, 
 |---|---|
 | Team name | **TEAM_NAME** |
 | College | Ramdeobaba University, Nagpur |
-| Members | NAME 1 (role), NAME 2 (role), NAME 3 (role) |
+| Members |Niharika Pareek and Shraddha Sharma |
 | Demo video | VIDEO_LINK (20-25 min) |
-| Presentation | `docs/NightWatch_Presentation.pdf` |
-| Architecture diagram | `docs/NightWatch_Architecture.pdf` (source: `docs/architecture.mmd`) |
+| Presentation | [`docs/NightWatch_Presentation.pdf`](https://docs.google.com/presentation/d/13X1-3XwUuqcE8DePnlJW1oCQ3pg0BgU_/edit?usp=sharing&ouid=101143277558535810680&rtpof=true&sd=true) |
+| Architecture diagram |https://drive.google.com/file/d/1-DV9G8tzzIrQfklLGv10gFZG6uIht-Ci/view?usp=sharing |
 
 ## Quick start (Docker)
 ```bash
