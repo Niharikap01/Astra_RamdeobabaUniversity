@@ -93,7 +93,8 @@ Labels are derived from simulated next-day cuff readings, which in turn are gene
 CGM not included: the target is hypertension, the guidelines list CGM as an example; sleep stages, HRV, steps, resting HR and medication timing are included. Genetic markers are out of scope for this run.
 
 ## AI-assisted development disclosure
-AI assistants were used for coding; human team members specified, reviewed and validated the project. The verification commands actually run in this pass are recorded in docs/RUN_STATE.md.
+AI assistants were used for coding. The team supplied the product requirements; this run verified only the test and documentation checks listed in docs/RUN_STATE.md. Full human review and competition-rule validation remain pending.
 
 ## License
 MIT, see `LICENSE`.
+
