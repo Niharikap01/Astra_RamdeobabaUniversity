@@ -11,8 +11,8 @@ NightWatch fuses synthetic EHR records, simulated wearable context (sleep, HRV, 
 | College / incubator | Ramdeobaba University, Nagpur; incubator information not listed |
 | Members |Niharika Pareek and Shraddha Sharma |
 | Demo video |https://youtu.be/l-NqfRHf9oc |
-| Presentation | [NightWatch_Presentation.pptx](docs/NightWatch_Presentation.pptx); [Google Slides copy](https://docs.google.com/presentation/d/13X1-3XwUuqcE8DePnlJW1oCQ3pg0BgU_/edit?usp=sharing&ouid=101143277558535810680&rtpof=true&sd=true) |
-| Architecture diagram | [NightWatch_Architecture.pdf](docs/NightWatch_Architecture.pdf); [Google Drive copy](https://drive.google.com/file/d/1-DV9G8tzzIrQfklLGv10gFZG6uIht-Ci/view?usp=sharing) (source: [architecture.mmd](docs/architecture.mmd)) |
+| Presentation | [NightWatch_Presentation.pptx](docs/NightWatch_Presentation.pptx) |
+| Architecture diagram | [NightWatch_Architecture.pdf](docs/NightWatch_Architecture.pdf) (source: [architecture.mmd](docs/architecture.mmd)) |
 
 ## Problem statement
 Clinicians may need to review home blood-pressure measurements alongside a patient's recent sleep and wearable history when considering near-term hypertension risk. NightWatch explores this workflow with a synthetic digital twin; its estimates recover patterns from the simulator and are not evidence of real-world clinical performance.
