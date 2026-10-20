@@ -7,7 +7,7 @@ NightWatch fuses synthetic EHR records, simulated wearable context (sleep, HRV, 
 ## Team
 | Field | Details |
 |---|---|
-| Team name | **TEAM_NAME** |
+| Team name | Astra |
 | College / incubator | Ramdeobaba University, Nagpur; incubator information not listed |
 | Members |Niharika Pareek and Shraddha Sharma |
 | Demo video |https://youtu.be/l-NqfRHf9oc |
