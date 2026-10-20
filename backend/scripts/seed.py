@@ -78,7 +78,7 @@ def seed_database(num_patients: int = 200, days: int = 120, force: bool = False)
 
         if force:
             logger.info("Force flag specified. Clearing existing clinical tables...")
-            from backend.app.models import Alert, EHREvent, Patient, Prediction, SensorReading
+            from backend.app.models import Alert
             db.query(Alert).delete()
             db.query(Prediction).delete()
             db.query(SensorReading).delete()

@@ -5,11 +5,13 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     environment:
-      ENVIRONMENT: production
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-nightwatch-synthetic-demo-secret-change-me}
-      CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080,http://localhost:5173
+      ENVIRONMENT: demo
+      DEMO_MODE: "true"
+      # Local synthetic demo default only; set JWT_SECRET_KEY to override it.
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-nightwatch-DEMO-ONLY-insecure-secret}
+      CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${NIGHTWATCH_API_PORT:-8000}:8000"
     volumes:
       - nightwatch-data:/data
     healthcheck:
@@ -21,7 +23,7 @@ services:
   dashboard:
     build: ./dashboard
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     depends_on:
       backend:
         condition: service_healthy
