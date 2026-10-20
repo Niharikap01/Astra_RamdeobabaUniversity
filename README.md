@@ -8,11 +8,23 @@ NightWatch fuses synthetic EHR records, simulated wearable context (sleep, HRV, 
 | Field | Details |
 |---|---|
 | Team name | **TEAM_NAME** |
-| College | Ramdeobaba University, Nagpur |
+| College / incubator | Ramdeobaba University, Nagpur; incubator information not listed |
 | Members |Niharika Pareek and Shraddha Sharma |
 | Demo video |https://youtu.be/l-NqfRHf9oc |
-| Presentation | [`docs/NightWatch_Presentation.pdf`](https://docs.google.com/presentation/d/13X1-3XwUuqcE8DePnlJW1oCQ3pg0BgU_/edit?usp=sharing&ouid=101143277558535810680&rtpof=true&sd=true) |
-| Architecture diagram |https://drive.google.com/file/d/1-DV9G8tzzIrQfklLGv10gFZG6uIht-Ci/view?usp=sharing |
+| Presentation | [NightWatch_Presentation.pptx](docs/NightWatch_Presentation.pptx); [Google Slides copy](https://docs.google.com/presentation/d/13X1-3XwUuqcE8DePnlJW1oCQ3pg0BgU_/edit?usp=sharing&ouid=101143277558535810680&rtpof=true&sd=true) |
+| Architecture diagram | [NightWatch_Architecture.pdf](docs/NightWatch_Architecture.pdf); [Google Drive copy](https://drive.google.com/file/d/1-DV9G8tzzIrQfklLGv10gFZG6uIht-Ci/view?usp=sharing) (source: [architecture.mmd](docs/architecture.mmd)) |
+
+## Problem statement
+Clinicians may need to review home blood-pressure measurements alongside a patient's recent sleep and wearable history when considering near-term hypertension risk. NightWatch explores this workflow with a synthetic digital twin; its estimates recover patterns from the simulator and are not evidence of real-world clinical performance.
+
+## Healthcare use case
+A clinician reviews a modeled next-24-hour hypertension episode estimate together with home cuff readings and wearable context, then decides whether to review the cuff log or document follow-up. The home cuff is the ground truth; wearable devices do not measure blood pressure in this project.
+
+## Technical stack
+- **Backend:** Python, FastAPI, SQLAlchemy, SQLite, REST and WebSocket APIs.
+- **Modeling:** pandas, NumPy, scikit-learn, LightGBM, isotonic calibration, SHAP, and SciPy.
+- **Dashboard:** React 19, TypeScript, Vite, Tailwind CSS 4, and ECharts.
+- **Packaging:** Docker Compose.
 
 ## Quick start (Docker)
 ```bash
@@ -42,7 +54,7 @@ cd dashboard; npm install; npm run dev            # terminal 2 (Vite prints the 
 - **Why risk changed:** SHAP factor attribution. **Persistent alert feed:** acknowledge / snooze / false-positive, with cooldown de-duplication.
 - **Safety behaviour:** predictions are refused when sensor coverage < 50%; JWT + role-based access; times stored in UTC, shown in Asia/Kolkata.
 
-## Model and evaluation
+## AI/ML model and evaluation
 LightGBM + isotonic calibration, patient-grouped 5-fold CV (200 synthetic patients), TreeSHAP explanations. Code: `ml/` (`train_lightgbm.py`, `evaluate.py`, `robustness.py`, `explain.py`); full report in `docs/evaluation_report.md`, `docs/model_card.md`.
 
 <!-- METRICS:START -->
@@ -93,8 +105,8 @@ Labels are derived from simulated next-day cuff readings, which in turn are gene
 CGM not included: the target is hypertension, the guidelines list CGM as an example; sleep stages, HRV, steps, resting HR and medication timing are included. Genetic markers are out of scope for this run.
 
 ## AI-assisted development disclosure
-AI assistants were used for coding. The team supplied the product requirements; this run verified only the test and documentation checks listed in docs/RUN_STATE.md. Full human review and competition-rule validation remain pending.
+AI assistants were used for coding. Human team members are responsible for reviewing the implementation and confirming that the submission meets competition rules.
 
 ## License
-MIT, see `LICENSE`.
+[MIT License](LICENSE).
 
