@@ -7,7 +7,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from backend.app.auth import require_role
 from backend.app.database import SessionLocal, get_db
+from backend.app.models import User
 from backend.app.schemas import (
     MessageResponse,
     ScenarioInjectRequest,
@@ -99,7 +101,11 @@ runner.on_day_generated = handle_simulated_day
 
 
 @router.post("/start", response_model=MessageResponse)
-async def start_simulation(payload: SimulationStartRequest, db: Session = Depends(get_db)):
+async def start_simulation(
+    payload: SimulationStartRequest,
+    current_user: User = Depends(require_role(["admin"])),
+    db: Session = Depends(get_db),
+):
     """Start real-time longitudinal simulation ticks across cohort from DB."""
     from backend.app.config import settings
     from backend.app.simulation.ehr_simulator import PatientProfile
@@ -176,7 +182,9 @@ async def start_simulation(payload: SimulationStartRequest, db: Session = Depend
 
 
 @router.post("/stop", response_model=MessageResponse)
-async def stop_simulation():
+async def stop_simulation(
+    current_user: User = Depends(require_role(["admin"])),
+):
     """Pause real-time simulation background loop."""
     await runner.stop()
     return MessageResponse(
@@ -206,6 +214,7 @@ def get_simulation_status():
 def inject_scenario(
     patient_id: str,
     payload: ScenarioInjectRequest,
+    current_user: User = Depends(require_role(["admin"])),
     db: Session = Depends(get_db),
 ):
     """Inject acute scenario perturbation (force_poor_sleep, force_missed_dose, etc.) for a patient."""

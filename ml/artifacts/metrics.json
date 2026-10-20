@@ -2,28 +2,61 @@
   "model_version": "1.1.0",
   "evaluation_protocol": "5-Fold GroupKFold (200 patients pooled)",
   "positive_class_rate": 0.2764,
+  "headline_metrics": {
+    "pooled_out_of_fold_roc_auc": 0.7751,
+    "pooled_out_of_fold_roc_auc_patient_cluster_ci95": [
+      0.7338,
+      0.8155
+    ],
+    "five_fold_mean_roc_auc": 0.8143,
+    "five_fold_roc_auc_sd": 0.0283,
+    "operating_points": {
+      "moderate": {
+        "threshold": 0.34,
+        "sensitivity": 0.6991,
+        "specificity": 0.7036,
+        "precision": 0.4248,
+        "false_alerts_per_patient_week": 1.58,
+        "tp": 525,
+        "fp": 711,
+        "tn": 1688,
+        "fn": 226
+      },
+      "high": {
+        "threshold": 0.47,
+        "sensitivity": 0.3675,
+        "specificity": 0.9166,
+        "precision": 0.5798,
+        "false_alerts_per_patient_week": 0.444,
+        "tp": 276,
+        "fp": 200,
+        "tn": 2199,
+        "fn": 475
+      }
+    }
+  },
   "operating_thresholds": {
     "high": {
       "threshold": 0.47,
-      "sensitivity": 0.8628,
-      "specificity": 0.5702,
-      "precision": 0.3859,
-      "false_alerts_per_patient_week": 2.291,
-      "tp": 648,
-      "fp": 1031,
-      "tn": 1368,
-      "fn": 103
+      "sensitivity": 0.3675,
+      "specificity": 0.9166,
+      "precision": 0.5798,
+      "false_alerts_per_patient_week": 0.444,
+      "tp": 276,
+      "fp": 200,
+      "tn": 2199,
+      "fn": 475
     },
     "moderate": {
       "threshold": 0.34,
-      "sensitivity": 0.9854,
-      "specificity": 0.3381,
-      "precision": 0.3179,
-      "false_alerts_per_patient_week": 3.529,
-      "tp": 740,
-      "fp": 1588,
-      "tn": 811,
-      "fn": 11
+      "sensitivity": 0.6991,
+      "specificity": 0.7036,
+      "precision": 0.4248,
+      "false_alerts_per_patient_week": 1.58,
+      "tp": 525,
+      "fp": 711,
+      "tn": 1688,
+      "fn": 226
     },
     "derivation": "validation set false alert budgets (High <= 0.30, Mod <= 0.80)"
   },
@@ -120,65 +153,171 @@
     "clusters": 200
   },
   "sparse_bp_experiment": {
-    "summary": {
-      "ehr_only": {
-        "mean_roc_auc": 0.6297,
-        "std_roc_auc": 0.085,
-        "mean_pr_auc": 0.4214,
-        "std_pr_auc": 0.0844
+    "comparison": "ehr_bp_sleep_hrv minus ehr_plus_bp",
+    "cv_protocol": "5-Fold GroupKFold with patient groups; identical folds for all settings",
+    "masking_protocol": "Unavailable cuff sessions are masked independently within each week; daily means all sessions.",
+    "availability_settings": {
+      "daily": {
+        "label": "Daily",
+        "models": {
+          "ehr_plus_bp": {
+            "fold_roc_auc": [
+              0.8235,
+              0.8244,
+              0.7863,
+              0.7888,
+              0.8387
+            ],
+            "mean_roc_auc": 0.8124,
+            "std_roc_auc": 0.021
+          },
+          "ehr_bp_sleep_hrv": {
+            "fold_roc_auc": [
+              0.826,
+              0.8239,
+              0.7999,
+              0.7776,
+              0.852
+            ],
+            "mean_roc_auc": 0.8159,
+            "std_roc_auc": 0.0253
+          }
+        },
+        "wearable_gain": {
+          "comparison": "ehr_bp_sleep_hrv minus ehr_plus_bp",
+          "fold_differences": [
+            0.0025,
+            -0.0005,
+            0.0136,
+            -0.0112,
+            0.0133
+          ],
+          "roc_auc_difference_mean": 0.0035,
+          "roc_auc_difference_sd": 0.0093,
+          "win_count": 3,
+          "wins": "3/5",
+          "pooled_oof_roc_auc_difference": 0.004,
+          "patient_cluster_bootstrap_ci95": [
+            -0.0093,
+            0.0166
+          ],
+          "patient_cluster_bootstrap": {
+            "bootstraps": 1000,
+            "clusters": 200
+          },
+          "ci_excludes_zero": false,
+          "supported": false,
+          "conclusion": "not supported"
+        }
       },
-      "ehr_plus_bp": {
-        "mean_roc_auc": 0.7493,
-        "std_roc_auc": 0.0286,
-        "mean_pr_auc": 0.463,
-        "std_pr_auc": 0.0721
+      "2-3 readings/week": {
+        "label": "2\u20133 readings/week",
+        "models": {
+          "ehr_plus_bp": {
+            "fold_roc_auc": [
+              0.7265,
+              0.7727,
+              0.7509,
+              0.7559,
+              0.7804
+            ],
+            "mean_roc_auc": 0.7573,
+            "std_roc_auc": 0.0188
+          },
+          "ehr_bp_sleep_hrv": {
+            "fold_roc_auc": [
+              0.7501,
+              0.7908,
+              0.7597,
+              0.743,
+              0.8356
+            ],
+            "mean_roc_auc": 0.7759,
+            "std_roc_auc": 0.0341
+          }
+        },
+        "wearable_gain": {
+          "comparison": "ehr_bp_sleep_hrv minus ehr_plus_bp",
+          "fold_differences": [
+            0.0236,
+            0.0181,
+            0.0088,
+            -0.0129,
+            0.0552
+          ],
+          "roc_auc_difference_mean": 0.0186,
+          "roc_auc_difference_sd": 0.0222,
+          "win_count": 4,
+          "wins": "4/5",
+          "pooled_oof_roc_auc_difference": 0.036,
+          "patient_cluster_bootstrap_ci95": [
+            0.0165,
+            0.0579
+          ],
+          "patient_cluster_bootstrap": {
+            "bootstraps": 1000,
+            "clusters": 200
+          },
+          "ci_excludes_zero": true,
+          "supported": true,
+          "conclusion": "supported"
+        }
       },
-      "ehr_bp_sleep_hrv": {
-        "mean_roc_auc": 0.781,
-        "std_roc_auc": 0.0439,
-        "mean_pr_auc": 0.5247,
-        "std_pr_auc": 0.0589
-      },
-      "full": {
-        "mean_roc_auc": 0.7844,
-        "std_roc_auc": 0.0406,
-        "mean_pr_auc": 0.5026,
-        "std_pr_auc": 0.0273
-      }
-    },
-    "paired_differences": {
-      "tier2_vs_tier1": {
-        "label": "Tier 2 (EHR+BP) vs Tier 1 (EHR)",
-        "roc_mean": 0.1196,
-        "roc_sd": 0.059,
-        "roc_wins": "5/5",
-        "pr_mean": 0.0416,
-        "pr_sd": 0.1487,
-        "pr_wins": "4/5",
-        "suggestive_only": "False"
-      },
-      "tier3_vs_tier2": {
-        "label": "Tier 3 (+Sleep/HRV) vs Tier 2 (EHR+BP)",
-        "roc_mean": 0.0317,
-        "roc_sd": 0.0235,
-        "roc_wins": "4/5",
-        "pr_mean": 0.0617,
-        "pr_sd": 0.1227,
-        "pr_wins": "3/5",
-        "suggestive_only": "False"
-      },
-      "tier4_vs_tier3": {
-        "label": "Tier 4 (Full Twin) vs Tier 3 (+Sleep/HRV)",
-        "roc_mean": 0.0035,
-        "roc_sd": 0.0063,
-        "roc_wins": "2/5",
-        "pr_mean": -0.022,
-        "pr_sd": 0.0676,
-        "pr_wins": "2/5",
-        "suggestive_only": true
+      "1 reading/week": {
+        "label": "1 reading/week",
+        "models": {
+          "ehr_plus_bp": {
+            "fold_roc_auc": [
+              0.678,
+              0.7544,
+              0.6857,
+              0.7391,
+              0.7054
+            ],
+            "mean_roc_auc": 0.7125,
+            "std_roc_auc": 0.0297
+          },
+          "ehr_bp_sleep_hrv": {
+            "fold_roc_auc": [
+              0.7148,
+              0.7771,
+              0.7618,
+              0.7354,
+              0.8105
+            ],
+            "mean_roc_auc": 0.7599,
+            "std_roc_auc": 0.0331
+          }
+        },
+        "wearable_gain": {
+          "comparison": "ehr_bp_sleep_hrv minus ehr_plus_bp",
+          "fold_differences": [
+            0.0368,
+            0.0227,
+            0.0761,
+            -0.0036,
+            0.105
+          ],
+          "roc_auc_difference_mean": 0.0474,
+          "roc_auc_difference_sd": 0.0386,
+          "win_count": 4,
+          "wins": "4/5",
+          "pooled_oof_roc_auc_difference": 0.062,
+          "patient_cluster_bootstrap_ci95": [
+            0.0292,
+            0.096
+          ],
+          "patient_cluster_bootstrap": {
+            "bootstraps": 1000,
+            "clusters": 200
+          },
+          "ci_excludes_zero": true,
+          "supported": true,
+          "conclusion": "supported"
+        }
       }
     }
   },
   "protocol_note": "Alert lead time is design-determined by the measurement protocol schedule (21:00 bedtime alert -> 08:00 morning or 20:30 evening cuff), not a model result.",
-  "limitations": "Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients."
+  "limitations": "Labels are derived from simulated next-day cuff readings, which in turn are generated from a hidden latent risk score that includes sleep debt, HRV drop, activity and stress terms, so model results measure recovery of the simulator's assumptions and are not evidence on real patients."
 }

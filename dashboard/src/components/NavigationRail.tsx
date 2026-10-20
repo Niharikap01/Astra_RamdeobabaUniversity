@@ -201,60 +201,65 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
         })}
       </div>
 
-      {/* Simulator Control Dock */}
-      <div className="p-3 border-t border-inherit bg-slate-900/60 space-y-2">
-        {isExpanded ? (
-          <div>
-            <div className="flex items-center justify-between text-xs mb-2">
-              <span className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                Telemetry Simulator
-              </span>
-              <button
-                onClick={onOpenSimulationModal}
-                className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
-                title="Scenario Injection"
-              >
-                <Sliders className="w-3 h-3" />
-                Scenarios
-              </button>
+      {/* Simulator Control Dock (Admin only) */}
+      {user?.role === "admin" && (
+        <div className="p-3 border-t border-inherit bg-slate-900/60 space-y-2">
+          {isExpanded ? (
+            <div>
+              <div className="flex items-center justify-between text-xs mb-2">
+                <span className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                  Telemetry Simulator
+                </span>
+                <button
+                  onClick={onOpenSimulationModal}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+                  title="Scenario Injection"
+                >
+                  <Sliders className="w-3 h-3" />
+                  Scenarios
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onToggleSimulation}
+                  className={`flex-1 py-1.5 px-3 rounded text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border ${
+                    simulationStatus?.is_running
+                      ? "bg-rose-950/40 text-rose-300 border-rose-800/60 hover:bg-rose-900/50"
+                      : "bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/50"
+                  }`}
+                >
+                  {simulationStatus?.is_running ? (
+                    <>
+                      <Square className="w-3.5 h-3.5 fill-rose-400" />
+                      Pause Sim
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-emerald-400" />
+                      Run Stream
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onToggleSimulation}
-                className={`flex-1 py-1.5 px-3 rounded text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border ${
-                  simulationStatus?.is_running
-                    ? "bg-rose-950/40 text-rose-300 border-rose-800/60 hover:bg-rose-900/50"
-                    : "bg-emerald-950/40 text-emerald-300 border-emerald-800/60 hover:bg-emerald-900/50"
-                }`}
-              >
-                {simulationStatus?.is_running ? (
-                  <>
-                    <Square className="w-3.5 h-3.5 fill-rose-400" />
-                    Pause Sim
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-emerald-400" />
-                    Run Stream
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={onToggleSimulation}
-            className="w-full p-2 rounded text-slate-400 hover:text-white flex items-center justify-center"
-            title={simulationStatus?.is_running ? "Pause simulation" : "Run simulation"}
-          >
-            {simulationStatus?.is_running ? <Square className="w-4 h-4 text-rose-400" /> : <Play className="w-4 h-4 text-emerald-400" />}
-          </button>
-        )}
+          ) : (
+            <button
+              onClick={onToggleSimulation}
+              className="w-full p-2 rounded text-slate-400 hover:text-white flex items-center justify-center"
+              title={simulationStatus?.is_running ? "Pause simulation" : "Run simulation"}
+            >
+              {simulationStatus?.is_running ? <Square className="w-4 h-4 text-rose-400" /> : <Play className="w-4 h-4 text-emerald-400" />}
+            </button>
+          )}
+        </div>
+      )}
 
+      {/* Global Controls & User Info */}
+      <div className="p-3 border-t border-inherit bg-slate-900/70 space-y-2">
         {/* Global Controls: Theme & Accessibility */}
         {isExpanded && (
-          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="flex items-center justify-between text-[11px] text-slate-400 pb-2">
             <button
               onClick={onToggleTheme}
               className="flex items-center gap-1.5 hover:text-slate-200 transition-colors"
@@ -274,18 +279,46 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
           </div>
         )}
 
-        {/* Authenticated Clinician User Info */}
-        <div className="pt-2 border-t border-slate-800/80">
+        {/* Authenticated User Info & Role Badge */}
+        <div className={isExpanded ? "pt-2 border-t border-slate-800/80" : ""}>
           {isAuthenticated && user ? (
             <div className="flex items-center justify-between gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800">
               <div className="flex items-center gap-2 overflow-hidden">
-                <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-semibold text-indigo-300 flex-shrink-0">
-                  {user.full_name ? user.full_name.charAt(0) : "D"}
+                <div className="relative">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-xs font-semibold text-indigo-300 flex-shrink-0">
+                    {user.full_name ? user.full_name.charAt(0) : "U"}
+                  </div>
+                  {!isExpanded && (
+                    <span
+                      data-testid="role-badge"
+                      title={`Role: ${user.role}`}
+                      className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border border-slate-900 ${
+                        user.role === "admin"
+                          ? "bg-purple-400 shadow-[0_0_6px_#a855f7]"
+                          : user.role === "clinician"
+                          ? "bg-cyan-400 shadow-[0_0_6px_#06b6d4]"
+                          : "bg-amber-400 shadow-[0_0_6px_#f59e0b]"
+                      }`}
+                    />
+                  )}
                 </div>
                 {isExpanded && (
                   <div className="truncate">
                     <p className="text-xs font-medium text-slate-200 truncate">{user.full_name}</p>
-                    <p className="text-[10px] text-indigo-400 font-mono capitalize">{user.role}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span
+                        data-testid="role-badge"
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-mono tracking-wider uppercase border leading-none ${
+                          user.role === "admin"
+                            ? "bg-purple-950/80 text-purple-300 border-purple-700/60 shadow-[0_0_8px_rgba(168,85,247,0.25)]"
+                            : user.role === "clinician"
+                            ? "bg-cyan-950/80 text-cyan-300 border-cyan-700/60 shadow-[0_0_8px_rgba(6,182,212,0.25)]"
+                            : "bg-amber-950/80 text-amber-300 border-amber-700/60 shadow-[0_0_8px_rgba(245,158,11,0.25)]"
+                        }`}
+                      >
+                        {user.role}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -305,7 +338,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({
               className="w-full py-1.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 rounded-xl text-xs text-indigo-300 flex items-center justify-center gap-2 transition-all"
             >
               <User className="w-3.5 h-3.5" />
-              {isExpanded && <span>Clinician Sign In</span>}
+              {isExpanded && <span>Sign In</span>}
             </button>
           )}
         </div>

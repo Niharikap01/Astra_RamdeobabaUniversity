@@ -42,10 +42,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Ensure initial database seed if empty
     db_init = SessionLocal()
     try:
+        from backend.scripts.seed import seed_default_users, seed_database
+        seed_default_users(db_init)
         from backend.app.models import Patient
         if db_init.query(Patient).count() == 0:
             logger.info("Database has no patients. Running startup seed...")
-            from backend.scripts.seed import seed_database
             seed_database(num_patients=200, days=120)
     except Exception as e:
         logger.error(f"Startup patient check/seeding error: {e}")

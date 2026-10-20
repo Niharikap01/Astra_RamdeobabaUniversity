@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", validation_alias=AliasChoices("LOG_LEVEL", "log_level"))
     host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("APP_HOST", "host"))
     port: int = Field(default=8000, validation_alias=AliasChoices("APP_PORT", "port"))
+    demo_mode: bool = Field(default=False, validation_alias=AliasChoices("DEMO_MODE", "demo_mode"))
 
     # Database
     database_url: str = Field(

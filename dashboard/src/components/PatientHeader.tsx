@@ -15,6 +15,7 @@ import {
   Table,
 } from "lucide-react";
 import { DigitalTwinResponse, PatientProfileDetail } from "../types";
+import { useAuth } from "../context/AuthContext";
 
 interface PatientHeaderProps {
   patient: PatientProfileDetail | null;
@@ -35,6 +36,8 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
   onToggleTableView,
   isTableView,
 }) => {
+  const { user } = useAuth();
+  const isViewer = user?.role === "viewer";
   if (!patient) return null;
 
   const archetypeDisplay = patient.archetype.replace(/_/g, " ").toUpperCase();
@@ -116,21 +119,25 @@ export const PatientHeader: React.FC<PatientHeaderProps> = ({
             <span>Simulate What-If</span>
           </button>
 
-          <button
-            onClick={onRequestRecheck}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 flex items-center gap-1.5 transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Order BP Recheck</span>
-          </button>
+          {!isViewer && (
+            <>
+              <button
+                onClick={onRequestRecheck}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 flex items-center gap-1.5 transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Order BP Recheck</span>
+              </button>
 
-          <button
-            onClick={onAddNote}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 flex items-center gap-1.5 transition-colors"
-          >
-            <FileText className="w-3.5 h-3.5 text-slate-400" />
-            <span>Add Note</span>
-          </button>
+              <button
+                onClick={onAddNote}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 flex items-center gap-1.5 transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                <span>Add Note</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -4,7 +4,7 @@ Executes:
 1. 5-Fold GroupKFold cross-validation across all patients with pooled out-of-fold predictions.
 2. Patient-level (cluster) bootstrap 95% confidence intervals on pooled predictions.
 3. Paired differences between consecutive ablation tiers (mean, SD, win counts).
-4. Sparse-BP sensitivity benchmark (2-3 readings/week masked independently per seed).
+4. Paired wearable-value comparisons at daily, 2-3, and 1 BP readings per week.
 5. Validation-derived operating thresholds (Moderate and High) with test set operating metrics.
 6. Programmatic generation of metrics.json, publication plots, and evaluation reports.
 """
@@ -28,7 +28,6 @@ from sklearn.metrics import (
     auc,
     brier_score_loss,
     confusion_matrix,
-    f1_score,
     precision_recall_curve,
     precision_score,
     roc_auc_score,
@@ -129,6 +128,39 @@ def compute_cluster_bootstrap_ci(
         "pr_auc_ci95": [round(float(np.percentile(pr_scores, 2.5)), 4), round(float(np.percentile(pr_scores, 97.5)), 4)],
         "bootstraps": n_bootstraps,
         "clusters": n_patients,
+    }
+
+
+def compute_cluster_bootstrap_auc_difference_ci(
+    df: pd.DataFrame,
+    prob_without_wearables: np.ndarray,
+    prob_with_wearables: np.ndarray,
+    n_bootstraps: int = 1000,
+    seed: int = 42,
+) -> Dict[str, Any]:
+    """Compute a paired ROC-AUC difference CI by resampling whole patients."""
+    unique_pids = np.unique(df["patient_id"].values)
+    groups = {
+        pid: np.column_stack((grp["target"].values, prob_without_wearables[grp.index], prob_with_wearables[grp.index]))
+        for pid, grp in df.reset_index(drop=True).groupby("patient_id")
+    }
+    rng = np.random.default_rng(seed)
+    differences: List[float] = []
+
+    for _ in range(n_bootstraps):
+        sampled_pids = rng.choice(unique_pids, size=len(unique_pids), replace=True)
+        sample = np.vstack([groups[pid] for pid in sampled_pids])
+        y_true = sample[:, 0].astype(int)
+        if len(np.unique(y_true)) < 2:
+            continue
+        without_auc = roc_auc_score(y_true, sample[:, 1])
+        with_auc = roc_auc_score(y_true, sample[:, 2])
+        differences.append(float(with_auc - without_auc))
+
+    return {
+        "ci95": [round(float(np.percentile(differences, 2.5)), 4), round(float(np.percentile(differences, 97.5)), 4)],
+        "bootstraps": n_bootstraps,
+        "clusters": len(unique_pids),
     }
 
 
@@ -315,242 +347,208 @@ def run_group_kfold_pipeline(
 def run_sparse_bp_experiment(
     records_df: pd.DataFrame,
     patients_df: pd.DataFrame,
-    base_df: Optional[pd.DataFrame] = None,
-    seeds: List[int] = EVALUATION_SEEDS,
+    base_df: pd.DataFrame,
+    figures_dir: str,
+    n_bootstraps: int = 1000,
+    seed: int = 42,
 ) -> Dict[str, Any]:
-    """Evaluate all four tiers when home BP cuff readings are available only 2-3 days per week.
-    Masking is performed independently per seed in train and test.
-    """
-    logger.info(f"Running Sparse-BP Experiment (2-3 readings/week) across {len(seeds)} independent seeds...")
+    """Compare BP plus wearable models at three BP availabilities in shared grouped CV."""
     patient_lookup = {p["patient_id"]: p for p in patients_df.to_dict(orient="records")}
-    prep = DataPreparationPipeline(seed=42)
-
-    tier_results = {t: {"roc": [], "pr": []} for t in TIER_NAMES}
-    records_grouped = {pid: grp.sort_values("day_index").reset_index(drop=True) for pid, grp in records_df.groupby("patient_id")}
-
-    for s_idx, s in enumerate(seeds):
-        rng = np.random.default_rng(s)
-
-        if base_df is not None:
-            sparse_df = base_df.copy()
-            n_rows = len(sparse_df)
-            sbp_latest = np.zeros(n_rows, dtype=float)
-            dbp_latest = np.zeros(n_rows, dtype=float)
-            sbp_mean_3d = np.zeros(n_rows, dtype=float)
-            sbp_mean_7d = np.zeros(n_rows, dtype=float)
-            sbp_std_7d = np.zeros(n_rows, dtype=float)
-            dbp_mean_7d = np.zeros(n_rows, dtype=float)
-            sbp_slope_7d = np.zeros(n_rows, dtype=float)
-            morning_sbp_mean_7d = np.zeros(n_rows, dtype=float)
-            evening_sbp_mean_7d = np.zeros(n_rows, dtype=float)
-            morning_minus_evening_sbp = np.zeros(n_rows, dtype=float)
-            days_since_last_bp = np.zeros(n_rows, dtype=float)
-            bp_reading_count_7d = np.zeros(n_rows, dtype=float)
-            sbp_dev_30d = np.zeros(n_rows, dtype=float)
-            dbp_dev_30d = np.zeros(n_rows, dtype=float)
-            bp_var_ratio = np.zeros(n_rows, dtype=float)
-
-            for pid, group_sorted in records_grouped.items():
-                static_info = patient_lookup[pid]
-                b_sbp = float(static_info.get("baseline_sbp", 125.0))
-                b_dbp = float(static_info.get("baseline_dbp", 80.0))
-                n_days = len(group_sorted)
-
-                measured_days = set()
-                for w_start in range(0, n_days, 7):
-                    chunk = list(range(w_start, min(n_days, w_start + 7)))
-                    k = min(int(rng.choice([2, 3])), len(chunk))
-                    measured_days.update(rng.choice(chunk, size=k, replace=False))
-
-                m_sbp = group_sorted["morning_sbp"].values.copy()
-                m_dbp = group_sorted["morning_dbp"].values.copy()
-                e_sbp = group_sorted["evening_sbp"].values.copy()
-                e_dbp = group_sorted["evening_dbp"].values.copy()
-
-                last_m_s, last_m_d, last_e_s, last_e_d = b_sbp, b_dbp, b_sbp, b_dbp
-                last_m_day = -1
-                days_since_arr = np.zeros(n_days, dtype=float)
-                is_meas = np.zeros(n_days, dtype=bool)
-
-                for i in range(n_days):
-                    d_idx = group_sorted["day_index"].iloc[i]
-                    if d_idx in measured_days:
-                        last_m_s = m_sbp[i]
-                        last_m_d = m_dbp[i]
-                        last_e_s = e_sbp[i]
-                        last_e_d = e_dbp[i]
-                        last_m_day = d_idx
-                        is_meas[i] = True
-                    else:
-                        m_sbp[i] = last_m_s
-                        m_dbp[i] = last_m_d
-                        e_sbp[i] = last_e_s
-                        e_dbp[i] = last_e_d
-                    days_since_arr[i] = float(max(0, d_idx - last_m_day)) if last_m_day >= 0 else float(d_idx)
-
-                p_indices = np.where(sparse_df["patient_id"].values == pid)[0]
-                day_indices = sparse_df["day_index"].values[p_indices]
-
-                for row_idx, t in zip(p_indices, day_indices):
-                    t = int(t)
-                    sbp_latest[row_idx] = e_sbp[t]
-                    dbp_latest[row_idx] = e_dbp[t]
-
-                    s3_m = m_sbp[max(0, t-2):t+1]
-                    s3_e = e_sbp[max(0, t-2):t+1]
-                    s3 = np.concatenate([s3_m, s3_e])
-                    sbp_mean_3d[row_idx] = float(np.mean(s3))
-
-                    s7_m = m_sbp[max(0, t-6):t+1]
-                    s7_e = e_sbp[max(0, t-6):t+1]
-                    d7_m = m_dbp[max(0, t-6):t+1]
-                    d7_e = e_dbp[max(0, t-6):t+1]
-                    s7 = np.concatenate([s7_m, s7_e])
-                    d7 = np.concatenate([d7_m, d7_e])
-
-                    s7_mean = float(np.mean(s7))
-                    s7_std = float(np.std(s7, ddof=1)) if len(s7) > 1 else 3.5
-                    d7_mean = float(np.mean(d7))
-
-                    sbp_mean_7d[row_idx] = s7_mean
-                    sbp_std_7d[row_idx] = s7_std
-                    dbp_mean_7d[row_idx] = d7_mean
-
-                    daily_7d = (s7_m + s7_e) / 2.0
-                    if len(daily_7d) >= 3:
-                        x_v = np.arange(len(daily_7d))
-                        slp, _ = np.polyfit(x_v, daily_7d, 1)
-                        sbp_slope_7d[row_idx] = float(slp)
-                    else:
-                        sbp_slope_7d[row_idx] = 0.0
-
-                    m7_mean = float(np.mean(s7_m))
-                    e7_mean = float(np.mean(s7_e))
-                    morning_sbp_mean_7d[row_idx] = m7_mean
-                    evening_sbp_mean_7d[row_idx] = e7_mean
-                    morning_minus_evening_sbp[row_idx] = m7_mean - e7_mean
-                    days_since_last_bp[row_idx] = days_since_arr[t]
-                    bp_reading_count_7d[row_idx] = float(np.sum(is_meas[max(0, t-6):t+1])) * 2.0
-
-                    sbp_dev_30d[row_idx] = s7_mean - b_sbp
-                    dbp_dev_30d[row_idx] = d7_mean - b_dbp
-
-                    s30_m = m_sbp[max(0, t-29):t+1]
-                    s30_e = e_sbp[max(0, t-29):t+1]
-                    s30 = np.concatenate([s30_m, s30_e])
-                    std30 = float(np.std(s30, ddof=1)) if len(s30) > 1 else 3.5
-                    bp_var_ratio[row_idx] = (s7_std / std30) if std30 > 0.1 else 1.0
-
-            sparse_df["sbp_latest"] = sbp_latest
-            sparse_df["dbp_latest"] = dbp_latest
-            sparse_df["sbp_mean_3d"] = sbp_mean_3d
-            sparse_df["sbp_mean_7d"] = sbp_mean_7d
-            sparse_df["sbp_std_7d"] = sbp_std_7d
-            sparse_df["dbp_mean_7d"] = dbp_mean_7d
-            sparse_df["sbp_slope_7d"] = sbp_slope_7d
-            sparse_df["morning_sbp_mean_7d"] = morning_sbp_mean_7d
-            sparse_df["evening_sbp_mean_7d"] = evening_sbp_mean_7d
-            sparse_df["morning_minus_evening_sbp"] = morning_minus_evening_sbp
-            sparse_df["days_since_last_bp_reading"] = days_since_last_bp
-            sparse_df["bp_reading_count_7d"] = bp_reading_count_7d
-            sparse_df["sbp_deviation_vs_30d_baseline"] = sbp_dev_30d
-            sparse_df["dbp_deviation_vs_30d_baseline"] = dbp_dev_30d
-            sparse_df["bp_variability_ratio_7d_vs_30d"] = bp_var_ratio
-        else:
-            sparse_rows = []
-            feat_pipe = FeatureEngineeringPipeline(feature_subset="full")
-            for pid, group in records_df.groupby("patient_id"):
-                static_info = patient_lookup[pid]
-                group_sorted = group.sort_values("day_index").reset_index(drop=True)
-                n_days = len(group_sorted)
-
-                measured_days = set()
-                for w_start in range(0, n_days, 7):
-                    chunk = list(range(w_start, min(n_days, w_start + 7)))
-                    k = min(int(rng.choice([2, 3])), len(chunk))
-                    measured_days.update(rng.choice(chunk, size=k, replace=False))
-
-                hist_sparse = group_sorted.copy()
-                last_m_sbp = static_info.get("baseline_sbp", 125.0)
-                last_m_dbp = static_info.get("baseline_dbp", 80.0)
-                last_e_sbp = static_info.get("baseline_sbp", 125.0)
-                last_e_dbp = static_info.get("baseline_dbp", 80.0)
-
-                for i in range(len(hist_sparse)):
-                    d_idx = hist_sparse.iloc[i]["day_index"]
-                    if d_idx in measured_days:
-                        last_m_sbp = hist_sparse.iloc[i]["morning_sbp"]
-                        last_m_dbp = hist_sparse.iloc[i]["morning_dbp"]
-                        last_e_sbp = hist_sparse.iloc[i]["evening_sbp"]
-                        last_e_dbp = hist_sparse.iloc[i]["evening_dbp"]
-                    else:
-                        hist_sparse.at[i, "morning_sbp"] = last_m_sbp
-                        hist_sparse.at[i, "morning_dbp"] = last_m_dbp
-                        hist_sparse.at[i, "evening_sbp"] = last_e_sbp
-                        hist_sparse.at[i, "evening_dbp"] = last_e_dbp
-
-                for d_idx in range(14, len(hist_sparse) - 1):
-                    sub_history = hist_sparse[hist_sparse["day_index"] <= d_idx]
-                    feat_dict = feat_pipe.compute_features_from_history(
-                        static_info=static_info,
-                        history_df=sub_history,
-                        current_day_index=d_idx + 1,
-                    )
-                    curr_row = group_sorted.iloc[d_idx]
-                    feat_dict["patient_id"] = pid
-                    feat_dict["day_index"] = d_idx
-                    feat_dict["target"] = int(curr_row["hypertensive_episode_next_day"])
-                    sparse_rows.append(feat_dict)
-            sparse_df = pd.DataFrame(sparse_rows)
-        s_train, s_val, s_test = prep._split_by_patient(sparse_df, seed=s)
-        y_test = s_test["target"].values
-
-        for tier in TIER_NAMES:
-            feats = FEATURE_SETS[tier]
-            b_mod, c_mod = train_single_tier(s_train, s_val, feats, seed=s)
-            probs = c_mod.predict_proba(s_test[feats].values)[:, 1]
-
-            roc = float(roc_auc_score(y_test, probs))
-            pr_val, rc_val, _ = precision_recall_curve(y_test, probs)
-            prauc = float(auc(rc_val, pr_val))
-
-            tier_results[tier]["roc"].append(roc)
-            tier_results[tier]["pr"].append(prauc)
-
-    sparse_summary = {}
-    for tier in TIER_NAMES:
-        sparse_summary[tier] = {
-            "mean_roc_auc": round(float(np.mean(tier_results[tier]["roc"])), 4),
-            "std_roc_auc": round(float(np.std(tier_results[tier]["roc"])), 4),
-            "mean_pr_auc": round(float(np.mean(tier_results[tier]["pr"])), 4),
-            "std_pr_auc": round(float(np.std(tier_results[tier]["pr"])), 4),
-        }
-
-    # Paired differences
-    comparisons = [
-        ("tier2_vs_tier1", "Tier 2 (EHR+BP) vs Tier 1 (EHR)", "ehr_plus_bp", "ehr_only"),
-        ("tier3_vs_tier2", "Tier 3 (+Sleep/HRV) vs Tier 2 (EHR+BP)", "ehr_bp_sleep_hrv", "ehr_plus_bp"),
-        ("tier4_vs_tier3", "Tier 4 (Full Twin) vs Tier 3 (+Sleep/HRV)", "full", "ehr_bp_sleep_hrv"),
+    records_grouped = {
+        pid: grp.sort_values("day_index").reset_index(drop=True)
+        for pid, grp in records_df.groupby("patient_id")
+    }
+    base_keys = pd.MultiIndex.from_frame(base_df[["patient_id", "day_index"]])
+    non_bp_features = FEATURE_SETS["ehr_bp_sleep_hrv"]
+    bp_columns = [
+        "morning_sbp", "morning_dbp", "evening_sbp", "evening_dbp",
     ]
-    sparse_paired = {}
-    for key, label, t_curr, t_prev in comparisons:
-        d_roc = [tier_results[t_curr]["roc"][i] - tier_results[t_prev]["roc"][i] for i in range(len(seeds))]
-        d_pr = [tier_results[t_curr]["pr"][i] - tier_results[t_prev]["pr"][i] for i in range(len(seeds))]
-        w_roc = sum(d > 0 for d in d_roc)
-        w_pr = sum(d > 0 for d in d_pr)
-        sparse_paired[key] = {
-            "label": label,
-            "roc_mean": round(float(np.mean(d_roc)), 4),
-            "roc_sd": round(float(np.std(d_roc)), 4),
-            "roc_wins": f"{w_roc}/{len(seeds)}",
-            "pr_mean": round(float(np.mean(d_pr)), 4),
-            "pr_sd": round(float(np.std(d_pr)), 4),
-            "pr_wins": f"{w_pr}/{len(seeds)}",
-            "suggestive_only": (w_roc <= 3 or np.std(d_roc) >= abs(np.mean(d_roc))),
+
+    def build_availability_frame(setting: str, setting_seed: int) -> pd.DataFrame:
+        if setting == "daily":
+            return base_df.copy()
+
+        rng = np.random.default_rng(setting_seed)
+        feature_pipe = FeatureEngineeringPipeline(feature_subset="full")
+        rows: List[Dict[str, Any]] = []
+        readings_per_week = [2, 3] if setting == "2-3 readings/week" else [1]
+
+        for pid, group_sorted in records_grouped.items():
+            static_info = patient_lookup[pid]
+            masked_history = group_sorted.copy()
+            observed_sessions = set()
+
+            for week_start in range(0, len(group_sorted), 7):
+                week_days = list(range(week_start, min(len(group_sorted), week_start + 7)))
+                sessions = [(day, period) for day in week_days for period in ("morning", "evening")]
+                count = min(int(rng.choice(readings_per_week)), len(sessions))
+                chosen_indices = rng.choice(len(sessions), size=count, replace=False)
+                observed_sessions.update(sessions[int(i)] for i in chosen_indices)
+
+            for day_pos, day_row in masked_history.iterrows():
+                day_idx = int(day_row["day_index"])
+                for period in ("morning", "evening"):
+                    if (day_pos, period) not in observed_sessions:
+                        for col in (f"{period}_sbp", f"{period}_dbp"):
+                            masked_history.at[day_pos, col] = np.nan
+
+            # The final day has no next-day cuff outcome and is excluded from model features.
+            for d_idx in range(14, len(group_sorted) - 1):
+                source_label = group_sorted.iloc[d_idx]["hypertensive_episode_next_day"]
+                if pd.isna(source_label) or str(source_label).lower() == "unlabelled":
+                    continue
+                history = masked_history[masked_history["day_index"] <= d_idx]
+                feature_row = feature_pipe.compute_features_from_history(
+                    static_info=static_info,
+                    history_df=history,
+                    current_day_index=d_idx + 1,
+                )
+                feature_row["patient_id"] = pid
+                feature_row["day_index"] = d_idx
+                feature_row["target"] = int(source_label)
+                rows.append(feature_row)
+
+        masked_features = pd.DataFrame(rows).set_index(["patient_id", "day_index"])
+        masked_features = masked_features.reindex(base_keys)
+        if masked_features["target"].isna().any():
+            raise ValueError(f"BP availability masking changed the evaluation row set for {setting}.")
+
+        available = base_df.copy()
+        for feature in non_bp_features:
+            available[feature] = masked_features[feature].to_numpy()
+        return available
+
+    settings = [
+        ("daily", "Daily"),
+        ("2-3 readings/week", "2–3 readings/week"),
+        ("1 reading/week", "1 reading/week"),
+    ]
+    results: Dict[str, Any] = {
+        "comparison": "ehr_bp_sleep_hrv minus ehr_plus_bp",
+        "cv_protocol": "5-Fold GroupKFold with patient groups; identical folds for all settings",
+        "masking_protocol": "Unavailable cuff sessions are masked independently within each week; daily means all sessions.",
+        "availability_settings": {},
+    }
+    fold_differences_by_setting: Dict[str, List[float]] = {}
+
+    for setting_idx, (setting, label) in enumerate(settings):
+        logger.info(f"Running wearable comparison with BP availability: {label}...")
+        availability_df = build_availability_frame(setting, seed)
+        gkf = GroupKFold(n_splits=5)
+        fold_roc = {"ehr_plus_bp": [], "ehr_bp_sleep_hrv": []}
+        oof_probs = {
+            "ehr_plus_bp": np.zeros(len(availability_df), dtype=float),
+            "ehr_bp_sleep_hrv": np.zeros(len(availability_df), dtype=float),
         }
 
-    return {"summary": sparse_summary, "paired_diffs": sparse_paired}
+        for fold_idx, (train_full_idx, test_idx) in enumerate(
+            gkf.split(availability_df, groups=availability_df["patient_id"])
+        ):
+            train_full_df = availability_df.iloc[train_full_idx]
+            test_df = availability_df.iloc[test_idx]
+            inner_split = GroupShuffleSplit(n_splits=1, train_size=0.80, random_state=seed + fold_idx)
+            train_idx, val_idx = next(
+                inner_split.split(train_full_df, groups=train_full_df["patient_id"])
+            )
+            train_df = train_full_df.iloc[train_idx]
+            val_df = train_full_df.iloc[val_idx]
 
+            for tier in ("ehr_plus_bp", "ehr_bp_sleep_hrv"):
+                features = FEATURE_SETS[tier]
+                _, calibrator = train_single_tier(
+                    train_df, val_df, features, seed=seed + fold_idx
+                )
+                probabilities = calibrator.predict_proba(test_df[features].values)[:, 1]
+                oof_probs[tier][test_idx] = probabilities
+                fold_roc[tier].append(
+                    float(roc_auc_score(test_df["target"].values, probabilities))
+                )
+
+        fold_differences = [
+            fold_roc["ehr_bp_sleep_hrv"][fold] - fold_roc["ehr_plus_bp"][fold]
+            for fold in range(5)
+        ]
+        wins = int(sum(difference > 0 for difference in fold_differences))
+        ci = compute_cluster_bootstrap_auc_difference_ci(
+            base_df.reset_index(drop=True),
+            oof_probs["ehr_plus_bp"],
+            oof_probs["ehr_bp_sleep_hrv"],
+            n_bootstraps=n_bootstraps,
+            seed=seed + setting_idx,
+        )
+        pooled_difference = float(
+            roc_auc_score(availability_df["target"], oof_probs["ehr_bp_sleep_hrv"])
+            - roc_auc_score(availability_df["target"], oof_probs["ehr_plus_bp"])
+        )
+        ci_excludes_zero = ci["ci95"][0] > 0 or ci["ci95"][1] < 0
+        supported = bool(ci_excludes_zero and wins >= 4)
+        fold_differences_by_setting[setting] = fold_differences
+
+        results["availability_settings"][setting] = {
+            "label": label,
+            "models": {
+                tier: {
+                    "fold_roc_auc": [round(score, 4) for score in fold_roc[tier]],
+                    "mean_roc_auc": round(float(np.mean(fold_roc[tier])), 4),
+                    "std_roc_auc": round(float(np.std(fold_roc[tier])), 4),
+                }
+                for tier in ("ehr_plus_bp", "ehr_bp_sleep_hrv")
+            },
+            "wearable_gain": {
+                "comparison": results["comparison"],
+                "fold_differences": [round(value, 4) for value in fold_differences],
+                "roc_auc_difference_mean": round(float(np.mean(fold_differences)), 4),
+                "roc_auc_difference_sd": round(float(np.std(fold_differences)), 4),
+                "win_count": wins,
+                "wins": f"{wins}/5",
+                "pooled_oof_roc_auc_difference": round(pooled_difference, 4),
+                "patient_cluster_bootstrap_ci95": ci["ci95"],
+                "patient_cluster_bootstrap": {
+                    "bootstraps": ci["bootstraps"],
+                    "clusters": ci["clusters"],
+                },
+                "ci_excludes_zero": ci_excludes_zero,
+                "supported": supported,
+                "conclusion": "supported" if supported else "not supported",
+            },
+        }
+
+    # Plot paired fold estimates and the patient-cluster bootstrap intervals.
+    fig, ax = plt.subplots(figsize=(9.5, 5.4))
+    y_positions = np.arange(len(settings))[::-1]
+    all_bounds = [0.0]
+    for y_pos, (setting, label) in zip(y_positions, settings):
+        result = results["availability_settings"][setting]
+        gain = result["wearable_gain"]
+        mean = gain["roc_auc_difference_mean"]
+        sd = gain["roc_auc_difference_sd"]
+        ci_low, ci_high = gain["patient_cluster_bootstrap_ci95"]
+        ax.errorbar(mean, y_pos + 0.12, xerr=sd, fmt="o", color="#2563eb", capsize=4,
+                    label="5-fold mean ± SD" if y_pos == y_positions[0] else None)
+        ax.errorbar(gain["pooled_oof_roc_auc_difference"], y_pos - 0.12,
+                    xerr=[[max(0.0, gain["pooled_oof_roc_auc_difference"] - ci_low)],
+                          [max(0.0, ci_high - gain["pooled_oof_roc_auc_difference"])]],
+                    fmt="D", color="#d97706", capsize=4,
+                    label="Pooled OOF difference, patient-cluster 95% CI" if y_pos == y_positions[0] else None)
+        ax.text(1.01, y_pos, f"{gain['wins']} wins; {gain['conclusion']}",
+                transform=ax.get_yaxis_transform(), va="center", fontsize=9)
+        all_bounds.extend([mean - sd, mean + sd, ci_low, ci_high])
+
+    ax.axvline(0, color="#6b7280", linestyle="--", linewidth=1.1)
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels([label for _, label in settings])
+    ax.set_xlabel("Δ ROC-AUC (EHR + BP + sleep/HRV minus EHR + BP)")
+    ax.set_title("Wearable contribution by BP availability")
+    ax.grid(axis="x", linestyle=":", alpha=0.5)
+    ax.legend(loc="lower right", fontsize=8)
+    right = max(all_bounds) + 0.06
+    left = min(all_bounds) - 0.06
+    ax.set_xlim(left, right)
+    fig.subplots_adjust(right=0.75)
+    os.makedirs(figures_dir, exist_ok=True)
+    fig.savefig(os.path.join(figures_dir, "sparse_bp_wearable_gain.png"), dpi=200, bbox_inches="tight")
+    plt.close(fig)
+    return results
 
 def render_publication_plots(
     dataset_df: pd.DataFrame,
@@ -647,143 +645,138 @@ def write_documentation_files(
     kfold_summary: Dict[str, Any],
     pooled_metrics: Dict[str, Any],
     paired_diffs: Dict[str, Any],
-    sparse_summary: Dict[str, Any],
-    sparse_paired: Dict[str, Any],
+    sparse_results: Dict[str, Any],
     operating_points: Dict[str, Any],
     bootstrap_cis: Dict[str, Any],
     positive_rate: float,
-    artifacts_dir: str = "ml/artifacts",
     docs_dir: str = "docs",
 ) -> None:
-    """Generate evaluation_report.md and update model_card.md using Python file templating."""
+    """Render the evaluation report and model card from computed metrics."""
+    os.makedirs(docs_dir, exist_ok=True)
     eval_report_path = os.path.join(docs_dir, "evaluation_report.md")
     model_card_path = os.path.join(docs_dir, "model_card.md")
+    settings = sparse_results["availability_settings"]
 
-    # Document Evaluation Report
+    sparse_table_rows = []
+    for result in settings.values():
+        gain = result["wearable_gain"]
+        ci_low, ci_high = gain["patient_cluster_bootstrap_ci95"]
+        conclusion = (
+            "Wearable gain is supported"
+            if gain["supported"]
+            else "Wearable gain is not supported"
+        )
+        sparse_table_rows.append(
+            f"| **{result['label']}** | {gain['roc_auc_difference_mean']:+.4f} ± "
+            f"{gain['roc_auc_difference_sd']:.4f} | {gain['wins']} | "
+            f"[{ci_low:+.4f}, {ci_high:+.4f}] | {conclusion} |"
+        )
+    sparse_table = "\n".join(sparse_table_rows)
+
     report_text = f"""# NightWatch Model Evaluation Report
 
 **Model Version:** {MODEL_VERSION}  
-**Target:** 24-Hour Hypertensive Episode Prediction (Next-day SBP $\\ge 140$ mmHg or DBP $\\ge 90$ mmHg)  
+**Target:** 24-hour hypertensive episode prediction (next-day SBP ≥ 140 mmHg or DBP ≥ 90 mmHg)  
 **Positive Episode Rate:** {positive_rate:.1%}  
-**Ground Truth:** Validated Home Blood Pressure Cuff Readings  
-**Cross-Validation Protocol:** 5-Fold GroupKFold over 200 patients (zero patient overlap across folds; 21,000 daily records)  
+**Ground Truth:** Simulated next-day home blood pressure cuff readings  
+**Cross-Validation Protocol:** 5-Fold GroupKFold over 200 patients (zero patient overlap across folds)  
 
 ---
 
-## 1. Executive Summary & Out-of-Fold Performance
+## 1. Headline Performance
 
-NightWatch evaluates multimodal clinical telemetry for next-day hypertensive episode warning. On the complete 200-patient cohort evaluated via 5-Fold GroupKFold cross-validation, the full multimodal digital twin reaches:
+- **Pooled Out-of-Fold ROC-AUC:** {pooled_metrics['full']['roc_auc']:.4f} (patient-cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
 - **5-Fold Cross-Validation Mean ROC-AUC:** {kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f}
-- **5-Fold Cross-Validation Mean PR-AUC:** {kfold_summary['full']['mean_pr_auc']:.4f} ± {kfold_summary['full']['std_pr_auc']:.4f}
-- **Pooled Out-of-Fold ROC-AUC:** {pooled_metrics['full']['roc_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
-- **Pooled Out-of-Fold PR-AUC:** {pooled_metrics['full']['pr_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
+- **Pooled Out-of-Fold PR-AUC:** {pooled_metrics['full']['pr_auc']:.4f} (patient-cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
 
----
+The pooled out-of-fold AUC and its patient-cluster confidence interval are the headline discrimination result. The 5-fold mean and SD describe variation across folds separately.
 
 ## 2. Five-Fold GroupKFold Modality Ablation
 
-### 2.1. Absolute Performance Across 5 Folds
-| Model Tier | Input Features | Mean ROC-AUC ± SD | Mean PR-AUC ± SD |
-| :--- | :--- | :---: | :---: |
-| **1. EHR Only** | Demographics, ICD-10 comorbidities, baseline labs | {kfold_summary['ehr_only']['mean_roc_auc']:.4f} ± {kfold_summary['ehr_only']['std_roc_auc']:.4f} | {kfold_summary['ehr_only']['mean_pr_auc']:.4f} ± {kfold_summary['ehr_only']['std_pr_auc']:.4f} |
-| **2. EHR + BP Cuff** | Static EHR + longitudinal morning & evening BP trends | {kfold_summary['ehr_plus_bp']['mean_roc_auc']:.4f} ± {kfold_summary['ehr_plus_bp']['std_roc_auc']:.4f} | {kfold_summary['ehr_plus_bp']['mean_pr_auc']:.4f} ± {kfold_summary['ehr_plus_bp']['std_pr_auc']:.4f} |
-| **3. + Sleep Architecture & HRV** | Static EHR + BP + sleep debt, efficiency, RMSSD HRV | {kfold_summary['ehr_bp_sleep_hrv']['mean_roc_auc']:.4f} ± {kfold_summary['ehr_bp_sleep_hrv']['std_roc_auc']:.4f} | {kfold_summary['ehr_bp_sleep_hrv']['mean_pr_auc']:.4f} ± {kfold_summary['ehr_bp_sleep_hrv']['std_pr_auc']:.4f} |
-| **4. Full Multimodal Twin** | Full features (+ steps, sedentary hours, oral med adherence) | **{kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f}** | **{kfold_summary['full']['mean_pr_auc']:.4f} ± {kfold_summary['full']['std_pr_auc']:.4f}** |
+| Model Tier | Mean ROC-AUC ± SD | Mean PR-AUC ± SD |
+| :--- | :---: | :---: |
+| **EHR Only** | {kfold_summary['ehr_only']['mean_roc_auc']:.4f} ± {kfold_summary['ehr_only']['std_roc_auc']:.4f} | {kfold_summary['ehr_only']['mean_pr_auc']:.4f} ± {kfold_summary['ehr_only']['std_pr_auc']:.4f} |
+| **EHR + BP Cuff** | {kfold_summary['ehr_plus_bp']['mean_roc_auc']:.4f} ± {kfold_summary['ehr_plus_bp']['std_roc_auc']:.4f} | {kfold_summary['ehr_plus_bp']['mean_pr_auc']:.4f} ± {kfold_summary['ehr_plus_bp']['std_pr_auc']:.4f} |
+| **EHR + BP + Sleep/HRV** | {kfold_summary['ehr_bp_sleep_hrv']['mean_roc_auc']:.4f} ± {kfold_summary['ehr_bp_sleep_hrv']['std_roc_auc']:.4f} | {kfold_summary['ehr_bp_sleep_hrv']['mean_pr_auc']:.4f} ± {kfold_summary['ehr_bp_sleep_hrv']['std_pr_auc']:.4f} |
+| **Full Multimodal Twin** | {kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f} | {kfold_summary['full']['mean_pr_auc']:.4f} ± {kfold_summary['full']['std_pr_auc']:.4f} |
 
-### 2.2. Paired Consecutive Differences (Within Same Patient Folds)
-| Comparison | $\\Delta$ ROC-AUC (Mean ± SD) | ROC Wins | $\\Delta$ PR-AUC (Mean ± SD) | PR Wins | Empirical Conclusion |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Tier 2 (EHR+BP) vs Tier 1 (EHR)** | **{paired_diffs['tier2_vs_tier1']['roc_mean']:+.4f} ± {paired_diffs['tier2_vs_tier1']['roc_sd']:.4f}** | **{paired_diffs['tier2_vs_tier1']['roc_wins']}** | **{paired_diffs['tier2_vs_tier1']['pr_mean']:+.4f} ± {paired_diffs['tier2_vs_tier1']['pr_sd']:.4f}** | **{paired_diffs['tier2_vs_tier1']['pr_wins']}** | **Consistent gain**: BP history provides large, statistically decisive lift |
-| **Tier 3 (+Sleep/HRV) vs Tier 2 (EHR+BP)** | {paired_diffs['tier3_vs_tier2']['roc_mean']:+.4f} ± {paired_diffs['tier3_vs_tier2']['roc_sd']:.4f} | {paired_diffs['tier3_vs_tier2']['roc_wins']} | {paired_diffs['tier3_vs_tier2']['pr_mean']:+.4f} ± {paired_diffs['tier3_vs_tier2']['pr_sd']:.4f} | {paired_diffs['tier3_vs_tier2']['pr_wins']} | **Inconsistent gain**: marginal mean lift with high fold-to-fold variance |
-| **Tier 4 (Full Twin) vs Tier 3 (+Sleep/HRV)** | {paired_diffs['tier4_vs_tier3']['roc_mean']:+.4f} ± {paired_diffs['tier4_vs_tier3']['roc_sd']:.4f} | {paired_diffs['tier4_vs_tier3']['roc_wins']} | {paired_diffs['tier4_vs_tier3']['pr_mean']:+.4f} ± {paired_diffs['tier4_vs_tier3']['pr_sd']:.4f} | {paired_diffs['tier4_vs_tier3']['pr_wins']} | **Inconsistent gain**: adherence/activity features yield mixed fold wins |
+### Paired Fold Differences
 
-*Core Finding:* Blood pressure history is the only consistent gain across all patient folds. Wearable sleep, autonomic HRV, and medication adherence metrics show marginal and inconsistent incremental lift when daily twice-cuff readings are already captured.
+| Comparison | Δ ROC-AUC (Mean ± SD) | Wins | Δ PR-AUC (Mean ± SD) | Wins |
+| :--- | :---: | :---: | :---: | :---: |
+| **EHR + BP vs EHR** | {paired_diffs['tier2_vs_tier1']['roc_mean']:+.4f} ± {paired_diffs['tier2_vs_tier1']['roc_sd']:.4f} | {paired_diffs['tier2_vs_tier1']['roc_wins']} | {paired_diffs['tier2_vs_tier1']['pr_mean']:+.4f} ± {paired_diffs['tier2_vs_tier1']['pr_sd']:.4f} | {paired_diffs['tier2_vs_tier1']['pr_wins']} |
+| **EHR + BP + Sleep/HRV vs EHR + BP** | {paired_diffs['tier3_vs_tier2']['roc_mean']:+.4f} ± {paired_diffs['tier3_vs_tier2']['roc_sd']:.4f} | {paired_diffs['tier3_vs_tier2']['roc_wins']} | {paired_diffs['tier3_vs_tier2']['pr_mean']:+.4f} ± {paired_diffs['tier3_vs_tier2']['pr_sd']:.4f} | {paired_diffs['tier3_vs_tier2']['pr_wins']} |
+| **Full Twin vs EHR + BP + Sleep/HRV** | {paired_diffs['tier4_vs_tier3']['roc_mean']:+.4f} ± {paired_diffs['tier4_vs_tier3']['roc_sd']:.4f} | {paired_diffs['tier4_vs_tier3']['roc_wins']} | {paired_diffs['tier4_vs_tier3']['pr_mean']:+.4f} ± {paired_diffs['tier4_vs_tier3']['pr_sd']:.4f} | {paired_diffs['tier4_vs_tier3']['pr_wins']} |
 
----
+## 3. Wearable Value Under Sparse BP Availability
 
-## 3. Sparse-BP Sensitivity Experiment (2–3 Readings / Week)
+The paired comparison is EHR + BP + sleep/HRV versus EHR + BP. Each availability setting uses the same patient-grouped 5-fold CV; the reported difference is the wearable model's ROC-AUC minus the BP-only model's ROC-AUC. The CI resamples whole patients from pooled out-of-fold predictions.
 
-When home blood pressure cuff readings are sparse (2–3 measurements per week, forward-filled on non-measured days):
+| BP availability | Paired Δ ROC-AUC (Mean ± SD) | Wins out of 5 | Patient-cluster bootstrap 95% CI for Δ | Conclusion |
+| :--- | :---: | :---: | :---: | :--- |
+{sparse_table}
 
-| Model Tier | Daily BP Mean ROC-AUC | Sparse BP Mean ROC-AUC ± SD | Sparse BP Mean PR-AUC ± SD | $\\Delta$ vs Prev Tier (ROC) | $\\Delta$ vs Prev Tier (PR) |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **1. EHR Only** | {kfold_summary['ehr_only']['mean_roc_auc']:.4f} | {sparse_summary['ehr_only']['mean_roc_auc']:.4f} ± {sparse_summary['ehr_only']['std_roc_auc']:.4f} | {sparse_summary['ehr_only']['mean_pr_auc']:.4f} ± {sparse_summary['ehr_only']['std_pr_auc']:.4f} | Baseline | Baseline |
-| **2. EHR + BP Cuff** | {kfold_summary['ehr_plus_bp']['mean_roc_auc']:.4f} | {sparse_summary['ehr_plus_bp']['mean_roc_auc']:.4f} ± {sparse_summary['ehr_plus_bp']['std_roc_auc']:.4f} | {sparse_summary['ehr_plus_bp']['mean_pr_auc']:.4f} ± {sparse_summary['ehr_plus_bp']['std_pr_auc']:.4f} | {sparse_paired['tier2_vs_tier1']['roc_mean']:+.4f} ± {sparse_paired['tier2_vs_tier1']['roc_sd']:.4f} ({sparse_paired['tier2_vs_tier1']['roc_wins']}) | {sparse_paired['tier2_vs_tier1']['pr_mean']:+.4f} ± {sparse_paired['tier2_vs_tier1']['pr_sd']:.4f} ({sparse_paired['tier2_vs_tier1']['pr_wins']}) |
-| **3. + Sleep & HRV** | {kfold_summary['ehr_bp_sleep_hrv']['mean_roc_auc']:.4f} | {sparse_summary['ehr_bp_sleep_hrv']['mean_roc_auc']:.4f} ± {sparse_summary['ehr_bp_sleep_hrv']['std_roc_auc']:.4f} | {sparse_summary['ehr_bp_sleep_hrv']['mean_pr_auc']:.4f} ± {sparse_summary['ehr_bp_sleep_hrv']['std_pr_auc']:.4f} | {sparse_paired['tier3_vs_tier2']['roc_mean']:+.4f} ± {sparse_paired['tier3_vs_tier2']['roc_sd']:.4f} ({sparse_paired['tier3_vs_tier2']['roc_wins']}) | {sparse_paired['tier3_vs_tier2']['pr_mean']:+.4f} ± {sparse_paired['tier3_vs_tier2']['pr_sd']:.4f} ({sparse_paired['tier3_vs_tier2']['pr_wins']}) |
-| **4. Full Twin** | {kfold_summary['full']['mean_roc_auc']:.4f} | {sparse_summary['full']['mean_roc_auc']:.4f} ± {sparse_summary['full']['std_roc_auc']:.4f} | {sparse_summary['full']['mean_pr_auc']:.4f} ± {sparse_summary['full']['std_pr_auc']:.4f} | {sparse_paired['tier4_vs_tier3']['roc_mean']:+.4f} ± {sparse_paired['tier4_vs_tier3']['roc_sd']:.4f} ({sparse_paired['tier4_vs_tier3']['roc_wins']}) | {sparse_paired['tier4_vs_tier3']['pr_mean']:+.4f} ± {sparse_paired['tier4_vs_tier3']['pr_sd']:.4f} ({sparse_paired['tier4_vs_tier3']['pr_wins']}) |
+A wearable gain is supported for a setting only when its patient-cluster bootstrap CI excludes zero and the wearable model wins at least 4 of 5 folds. The figure is `figures/sparse_bp_wearable_gain.png`.
 
-*Observation on Sparse-BP:* The incremental gain from sleep/HRV under sparse BP is **suggestive only** ({sparse_paired['tier3_vs_tier2']['roc_wins']} seeds, with standard deviation {sparse_paired['tier3_vs_tier2']['roc_sd']:.4f} roughly equal to the mean difference {sparse_paired['tier3_vs_tier2']['roc_mean']:+.4f}). While continuous telemetry helps bridge unmeasured cuff intervals, the effect is modest and should not be overstated.
+## 4. Operating Points From `ml/artifacts/thresholds.json`
 
----
+| Risk tier | Threshold | Sensitivity | Specificity | Precision | False alerts / patient-week | TP | FP | TN | FN |
+| :--- | :---: | :---: | :---: | :---: | :---: | ---: | ---: | ---: | ---: |
+| **Moderate** | {operating_points['moderate']['threshold']:.2f} | {operating_points['moderate']['sensitivity']:.1%} | {operating_points['moderate']['specificity']:.1%} | {operating_points['moderate']['precision']:.1%} | {operating_points['moderate']['false_alerts_per_patient_week']:.3f} | {operating_points['moderate']['tp']} | {operating_points['moderate']['fp']} | {operating_points['moderate']['tn']} | {operating_points['moderate']['fn']} |
+| **High** | {operating_points['high']['threshold']:.2f} | {operating_points['high']['sensitivity']:.1%} | {operating_points['high']['specificity']:.1%} | {operating_points['high']['precision']:.1%} | {operating_points['high']['false_alerts_per_patient_week']:.3f} | {operating_points['high']['tp']} | {operating_points['high']['fp']} | {operating_points['high']['tn']} | {operating_points['high']['fn']} |
 
-## 4. Operating Points & Validation-Derived Clinical Thresholds
+## 5. Protocol Timing
 
-Thresholds are derived strictly on the validation sets to respect clinical alert fatigue budgets:
-- **Moderate Risk Threshold ($\\\\tau = {operating_points['moderate']['threshold']:.2f}$):** Target $\\\\le 0.80$ false alerts / patient-week on validation.
-- **High Risk Threshold ($\\\\tau = {operating_points['high']['threshold']:.2f}$):** Lowest threshold achieving $\\\\le 0.30$ false alerts / patient-week on validation.
-
-### Out-of-Fold Test Performance at Derived Operating Points
-| Risk Tier | Decision Threshold | Sensitivity (Recall) | Specificity | Precision (PPV) | False Alerts / Patient-Week | Clinical Action Profile |
-| :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Moderate Risk** | **$\\\\tau \\\\ge {operating_points['moderate']['threshold']:.2f}$** | {operating_points['moderate']['sensitivity']:.1%} | {operating_points['moderate']['specificity']:.1%} | {operating_points['moderate']['precision']:.1%} | {operating_points['moderate']['false_alerts_per_patient_week']:.3f} | Lifestyle review, sleep hygiene check, medication adherence verification |
-| **High Risk** | **$\\\\tau \\\\ge {operating_points['high']['threshold']:.2f}$** | {operating_points['high']['sensitivity']:.1%} | {operating_points['high']['specificity']:.1%} | {operating_points['high']['precision']:.1%} | {operating_points['high']['false_alerts_per_patient_week']:.3f} | Direct clinician notification, morning BP confirmation, medication review |
-
----
-
-## 5. Protocol Timing & Action Window Note
-
-Alerts run at 21:00 (bedtime assessment) when daily wearable metrics sync. If an episode occurs the next day, it is detected either at the morning cuff measurement (08:00; 11.0 hours later) or evening measurement (20:30; 23.5 hours later). These lead times are **design-determined by the measurement protocol schedule**, not an intrinsic property or discovery of the predictive model.
-
----
+Alerts run at 21:00 when daily wearable metrics sync. A next-day episode is detected at the morning cuff measurement (08:00; 11 hours later) or evening measurement (20:30; 23.5 hours later). These lead times are determined by the measurement schedule, not by the model.
 
 ## 6. Limitations
 
-Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients. The coupling between sleep debt, vagal tone (HRV), and next-day vascular pressure reflects algorithmic formulations and literature priors rather than prospectively verified human biology. Prospective clinical validation with randomized clinical trials and certified ambulatory blood pressure monitoring (ABPM) is strictly required before any real-world deployment.
+Labels are derived from simulated next-day cuff readings, which in turn are generated from a hidden latent risk score that includes sleep debt, HRV drop, activity and stress terms, so model results measure recovery of the simulator's assumptions and are not evidence on real patients. Prospective clinical validation is required before any real-world use.
 """
+    with open(eval_report_path, "w", encoding="utf-8") as report_file:
+        report_file.write(report_text)
 
-    with open(eval_report_path, "w", encoding="utf-8") as f:
-        f.write(report_text)
-    logger.info(f"Saved regenerated evaluation report to {eval_report_path}")
-
-    # Document Model Card
     model_card_text = f"""# Model Card: NightWatch Multimodal Hypertensive Episode Predictor
 
 ## Model Details
+
 - **Developer:** NightWatch Clinical Intelligence Team
 - **Model Version:** {MODEL_VERSION}
-- **Architecture:** Regularized LightGBM with Isotonic Probability Calibration (`CalibratedClassifierCV`)
-- **Evaluation Protocol:** 5-Fold GroupKFold over 200 patients (pooled out-of-fold predictions)
-- **Primary Inputs:** Multimodal physiological features ($d=65$):
-  1. Static EHR demographics, ICD-10 comorbidities, baseline labs ($d=24$)
-  2. Ground-truth home BP cuff longitudinal rolling statistics ($d=11$)
-  3. Wearable sleep architecture and autonomic tone (RMSSD HRV, resting HR) ($d=18$)
-  4. Physical activity and smart pillbox adherence tracking ($d=8$)
-  5. 30-day personal baseline deviation contrasts ($d=4$)
+- **Architecture:** Regularized LightGBM with isotonic probability calibration
+- **Evaluation Protocol:** Patient-grouped 5-Fold GroupKFold with pooled out-of-fold predictions
+- **Primary Inputs:** EHR, home BP cuff trends, sleep architecture, HRV, activity, and medication adherence
 
----
+## Headline Performance
 
-## Clinical Operating Thresholds (Validation-Derived)
-- **Moderate Risk Threshold:** $\\tau = {operating_points['moderate']['threshold']:.2f}$ (Sensitivity: {operating_points['moderate']['sensitivity']:.1%}, Precision: {operating_points['moderate']['precision']:.1%}, FA: {operating_points['moderate']['false_alerts_per_patient_week']:.2f}/pt-wk)
-- **High Risk Threshold:** $\\tau = {operating_points['high']['threshold']:.2f}$ (Sensitivity: {operating_points['high']['sensitivity']:.1%}, Precision: {operating_points['high']['precision']:.1%}, FA: {operating_points['high']['false_alerts_per_patient_week']:.2f}/pt-wk)
-
----
-
-## Performance Summary (5-Fold GroupKFold)
+- **Pooled Out-of-Fold ROC-AUC:** {pooled_metrics['full']['roc_auc']:.4f} (patient-cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
 - **5-Fold Cross-Validation Mean ROC-AUC:** {kfold_summary['full']['mean_roc_auc']:.4f} ± {kfold_summary['full']['std_roc_auc']:.4f}
-- **Pooled Out-of-Fold ROC-AUC:** {pooled_metrics['full']['roc_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['roc_auc_ci95'][0]:.4f}, {bootstrap_cis['roc_auc_ci95'][1]:.4f}])
-- **Pooled Out-of-Fold PR-AUC:** {pooled_metrics['full']['pr_auc']:.4f} (Patient Cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
-- **Ablation Findings:** Blood pressure history is the only consistent gain across all patient folds (+{paired_diffs['tier2_vs_tier1']['roc_mean']:.4f} ROC, 5/5 wins). Sleep/HRV and adherence gains are inconsistent under daily cuff monitoring. Under sparse cuff monitoring (2-3 readings/week), sleep/HRV gains are suggestive only ({sparse_paired['tier3_vs_tier2']['roc_wins']} wins).
+- **Pooled Out-of-Fold PR-AUC:** {pooled_metrics['full']['pr_auc']:.4f} (patient-cluster 95% CI: [{bootstrap_cis['pr_auc_ci95'][0]:.4f}, {bootstrap_cis['pr_auc_ci95'][1]:.4f}])
 
----
+The pooled out-of-fold AUC is the headline AUC; the fold mean and SD are reported separately as cross-validation variability.
+
+## Clinical Operating Points From `ml/artifacts/thresholds.json`
+
+| Risk tier | Threshold | Sensitivity | Specificity | Precision | False alerts / patient-week | TP | FP | TN | FN |
+| :--- | :---: | :---: | :---: | :---: | :---: | ---: | ---: | ---: | ---: |
+| **Moderate** | {operating_points['moderate']['threshold']:.2f} | {operating_points['moderate']['sensitivity']:.1%} | {operating_points['moderate']['specificity']:.1%} | {operating_points['moderate']['precision']:.1%} | {operating_points['moderate']['false_alerts_per_patient_week']:.3f} | {operating_points['moderate']['tp']} | {operating_points['moderate']['fp']} | {operating_points['moderate']['tn']} | {operating_points['moderate']['fn']} |
+| **High** | {operating_points['high']['threshold']:.2f} | {operating_points['high']['sensitivity']:.1%} | {operating_points['high']['specificity']:.1%} | {operating_points['high']['precision']:.1%} | {operating_points['high']['false_alerts_per_patient_week']:.3f} | {operating_points['high']['tp']} | {operating_points['high']['fp']} | {operating_points['high']['tn']} | {operating_points['high']['fn']} |
+
+## Wearable Value Under Sparse BP Availability
+
+| BP availability | Paired Δ ROC-AUC (Mean ± SD) | Wins out of 5 | Patient-cluster bootstrap 95% CI for Δ | Conclusion |
+| :--- | :---: | :---: | :---: | :--- |
+{sparse_table}
+
+Gain is supported only when the patient-cluster CI excludes zero and there are at least 4 wins in 5 folds.
 
 ## Limitations
 
-Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients. The coupling between prior-night sleep architecture, autonomic balance, and vascular tone is modeled via algorithmic differential equations and literature priors rather than prospectively verified human biology. Prospective clinical validation with randomized clinical trials and certified ambulatory blood pressure monitoring (ABPM) is strictly required before any real-world deployment.
+Labels are derived from simulated next-day cuff readings, which in turn are generated from a hidden latent risk score that includes sleep debt, HRV drop, activity and stress terms, so model results measure recovery of the simulator's assumptions and are not evidence on real patients.
 """
-    with open(model_card_path, "w", encoding="utf-8") as f:
-        f.write(model_card_text)
-    logger.info(f"Saved updated model card to {model_card_path}")
-
+    with open(model_card_path, "w", encoding="utf-8") as card_file:
+        card_file.write(model_card_text)
+    logger.info(f"Saved generated evaluation report to {eval_report_path}")
+    logger.info(f"Saved generated model card to {model_card_path}")
 
 def main() -> None:
     """Execute end-to-end robust evaluation pipeline and write all artifacts."""
@@ -811,12 +804,13 @@ def main() -> None:
     # 3. Operating thresholds from ml/artifacts/thresholds.json (fallback: derive on validation)
     test_df = pd.read_parquet(data_dir / "processed" / "test.parquet")
     thresh_path = os.path.join(artifacts_dir, "thresholds.json")
+    threshold_data = None
     if os.path.exists(thresh_path):
         logger.info(f"Loading operating thresholds from {thresh_path}...")
-        with open(thresh_path) as f:
-            t_data = json.load(f)
-            tau_high = float(t_data.get("high", 0.47))
-            tau_mod = float(t_data.get("moderate", 0.34))
+        with open(thresh_path, encoding="utf-8") as f:
+            threshold_data = json.load(f)
+            tau_high = float(threshold_data.get("high", 0.47))
+            tau_mod = float(threshold_data.get("moderate", 0.34))
     else:
         val_feats = val_df[FEATURE_SETS["full"]].values
         val_probs = kfold_res["best_calibrator"].predict_proba(val_feats)[:, 1]
@@ -827,12 +821,19 @@ def main() -> None:
     test_probs = kfold_res["best_calibrator"].predict_proba(test_feats)[:, 1]
     total_test_weeks = len(test_df) / 7.0
 
-    op_high = evaluate_operating_point(test_df["target"].values, test_probs, tau_high, total_test_weeks)
-    op_mod = evaluate_operating_point(test_df["target"].values, test_probs, tau_mod, total_test_weeks)
+    saved_test_points = (threshold_data or {}).get("test_evaluation", {})
+    if all(tier in saved_test_points for tier in ("moderate", "high")):
+        op_mod = {**saved_test_points["moderate"], "threshold": tau_mod}
+        op_high = {**saved_test_points["high"], "threshold": tau_high}
+    else:
+        op_high = evaluate_operating_point(test_df["target"].values, test_probs, tau_high, total_test_weeks)
+        op_mod = evaluate_operating_point(test_df["target"].values, test_probs, tau_mod, total_test_weeks)
     operating_points = {"high": op_high, "moderate": op_mod}
 
-    # 4. Sparse-BP Experiment
-    sparse_res = run_sparse_bp_experiment(records_df, patients_df, base_df=dataset_df, seeds=EVALUATION_SEEDS)
+    # 4. Sparse-BP wearable comparison
+    sparse_res = run_sparse_bp_experiment(
+        records_df, patients_df, base_df=dataset_df, figures_dir=figures_dir, seed=42
+    )
 
     # 5. Render plots (both ml/artifacts/ and docs/figures/)
     logger.info("Rendering publication diagnostic plots...")
@@ -859,6 +860,13 @@ def main() -> None:
         "model_version": MODEL_VERSION,
         "evaluation_protocol": "5-Fold GroupKFold (200 patients pooled)",
         "positive_class_rate": round(pos_rate, 4),
+        "headline_metrics": {
+            "pooled_out_of_fold_roc_auc": kfold_res["pooled_metrics"]["full"]["roc_auc"],
+            "pooled_out_of_fold_roc_auc_patient_cluster_ci95": kfold_res["bootstrap_cis"]["roc_auc_ci95"],
+            "five_fold_mean_roc_auc": kfold_res["kfold_summary"]["full"]["mean_roc_auc"],
+            "five_fold_roc_auc_sd": kfold_res["kfold_summary"]["full"]["std_roc_auc"],
+            "operating_points": {"moderate": op_mod, "high": op_high},
+        },
         "operating_thresholds": {
             "high": op_high,
             "moderate": op_mod,
@@ -868,12 +876,9 @@ def main() -> None:
         "paired_differences": kfold_res["paired_diffs"],
         "pooled_out_of_fold": kfold_res["pooled_metrics"],
         "patient_cluster_bootstrap": kfold_res["bootstrap_cis"],
-        "sparse_bp_experiment": {
-            "summary": sparse_res["summary"],
-            "paired_differences": sparse_res["paired_diffs"],
-        },
+        "sparse_bp_experiment": sparse_res,
         "protocol_note": "Alert lead time is design-determined by the measurement protocol schedule (21:00 bedtime alert -> 08:00 morning or 20:30 evening cuff), not a model result.",
-        "limitations": "Results come from synthetic data with assumptions built into the simulator, and the sleep/HRV effect is not validated on real patients.",
+        "limitations": "Labels are derived from simulated next-day cuff readings, which in turn are generated from a hidden latent risk score that includes sleep debt, HRV drop, activity and stress terms, so model results measure recovery of the simulator's assumptions and are not evidence on real patients.",
     }
 
     def _clean_json(obj):
@@ -894,15 +899,22 @@ def main() -> None:
         kfold_summary=kfold_res["kfold_summary"],
         pooled_metrics=kfold_res["pooled_metrics"],
         paired_diffs=kfold_res["paired_diffs"],
-        sparse_summary=sparse_res["summary"],
-        sparse_paired=sparse_res["paired_diffs"],
+        sparse_results=sparse_res,
         operating_points=operating_points,
         bootstrap_cis=kfold_res["bootstrap_cis"],
         positive_rate=pos_rate,
-        artifacts_dir=artifacts_dir,
         docs_dir=docs_dir,
     )
 
+    logger.info("Sparse-BP wearable comparison (Δ ROC-AUC, mean ± SD | wins | patient-cluster 95% CI):")
+    for result in sparse_res["availability_settings"].values():
+        gain = result["wearable_gain"]
+        logger.info(
+            f"{result['label']}: {gain['roc_auc_difference_mean']:+.4f} ± "
+            f"{gain['roc_auc_difference_sd']:.4f} | {gain['wins']} | "
+            f"[{gain['patient_cluster_bootstrap_ci95'][0]:+.4f}, "
+            f"{gain['patient_cluster_bootstrap_ci95'][1]:+.4f}] | {gain['conclusion']}"
+        )
     logger.info("======================================================================")
     logger.info("Robustness and Evaluation Integrity Pipeline Finished Successfully!")
     logger.info(f"High Threshold: {tau_high:.2f} | Mod Threshold: {tau_mod:.2f}")

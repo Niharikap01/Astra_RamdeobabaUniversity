@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { AlertResponse } from "../types";
+import { useAuth } from "../context/AuthContext";
 
 interface RightAlertDrawerProps {
   alerts: AlertResponse[];
@@ -36,6 +37,8 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
   isOpen,
   onToggle,
 }) => {
+  const { user } = useAuth();
+  const isViewer = user?.role === "viewer";
   const [selectedAlertForAction, setSelectedAlertForAction] = useState<AlertResponse | null>(null);
   const [actionType, setActionType] = useState<"snooze" | "false_positive" | null>(null);
   const [snoozeHours, setSnoozeHours] = useState<number>(4);
@@ -140,37 +143,43 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                     </p>
 
                     {/* Actions */}
-                    <div className="mt-3 pt-2 border-t border-rose-900/40 flex items-center justify-between gap-1">
-                      <button
-                        onClick={() => onAcknowledge(alert.alert_id)}
-                        className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-200 text-[11px] font-medium transition-colors"
-                      >
-                        Acknowledge
-                      </button>
+                    {!isViewer ? (
+                      <div className="mt-3 pt-2 border-t border-rose-900/40 flex items-center justify-between gap-1">
+                        <button
+                          onClick={() => onAcknowledge(alert.alert_id)}
+                          className="px-2.5 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-200 text-[11px] font-medium transition-colors"
+                        >
+                          Acknowledge
+                        </button>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => {
-                            setSelectedAlertForAction(alert);
-                            setActionType("snooze");
-                          }}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors"
-                          title="Snooze Alert"
-                        >
-                          Snooze
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedAlertForAction(alert);
-                            setActionType("false_positive");
-                          }}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[11px] transition-colors"
-                          title="Mark False Positive"
-                        >
-                          Audit FP
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setSelectedAlertForAction(alert);
+                              setActionType("snooze");
+                            }}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors"
+                            title="Snooze Alert"
+                          >
+                            Snooze
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedAlertForAction(alert);
+                              setActionType("false_positive");
+                            }}
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-[11px] transition-colors"
+                            title="Mark False Positive"
+                          >
+                            Audit FP
+                          </button>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="mt-2 pt-1 border-t border-rose-900/30 flex justify-end">
+                        <span className="text-[10px] text-slate-500 font-mono italic">Read-only view</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -208,7 +217,7 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
                     <p className="text-slate-300 mt-1 font-serif text-[11px] leading-snug">
                       {alert.message}
                     </p>
-                    {alert.status === "open" && (
+                    {!isViewer && alert.status === "open" && (
                       <div className="mt-2 pt-2 border-t border-amber-900/30 flex justify-end">
                         <button
                           onClick={() => onAcknowledge(alert.alert_id)}
@@ -259,22 +268,30 @@ export const RightAlertDrawer: React.FC<RightAlertDrawerProps> = ({
         </div>
 
         {/* Bottom Fast Action Buttons */}
-        <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
-          <button
-            onClick={onRequestRecheck}
-            className="w-full py-2 px-3 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/70 border border-indigo-700/60 text-indigo-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            Order Home BP Cuff Recheck
-          </button>
-          <button
-            onClick={() => setActionType("note" as any)}
-            className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
-          >
-            <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
-            Document Clinical Note
-          </button>
-        </div>
+        {!isViewer ? (
+          <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
+            <button
+              onClick={onRequestRecheck}
+              className="w-full py-2 px-3 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/70 border border-indigo-700/60 text-indigo-300 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Order Home BP Cuff Recheck
+            </button>
+            <button
+              onClick={() => setActionType("note" as any)}
+              className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-purple-400"
+            >
+              <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+              Document Clinical Note
+            </button>
+          </div>
+        ) : (
+          <div className="p-3 border-t border-slate-800 bg-slate-950/60 text-center">
+            <span className="text-[11px] text-slate-500 font-mono italic">
+              Viewer mode: Clinical actions disabled
+            </span>
+          </div>
+        )}
       </aside>
 
       {/* Snooze / False Positive / Note Modal Dialog */}

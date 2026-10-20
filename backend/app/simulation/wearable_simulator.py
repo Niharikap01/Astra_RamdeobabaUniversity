@@ -39,7 +39,7 @@ class DailySimulationRecord:
     evening_sbp: float
     evening_dbp: float
     latent_risk_score: float
-    hypertensive_episode_next_day: int = 0  # 1 if next-day morning or evening SBP>=140 or DBP>=90
+    hypertensive_episode_next_day: int | str = 0  # Last day is explicitly unlabelled because no next-day cuff exists.
     lead_time_hours: float = 0.0  # Alert lead time hours prior to surge onset
 
     def to_sensor_readings(self, base_datetime: datetime) -> List[Dict[str, Any]]:
@@ -181,9 +181,8 @@ class WearableSimulator:
             # Lead time in hours from prior-day alert evaluation (21:00) to episode onset (08:00 or 20:30 next day)
             records[i].lead_time_hours = 11.0 if morning_excursion else (23.5 if evening_excursion else 0.0)
 
-        # For the final day, estimate label from latent risk probability to avoid unlabelled row
-        records[-1].hypertensive_episode_next_day = int(records[-1].latent_risk_score > 0.45)
-        records[-1].lead_time_hours = 11.0 if records[-1].hypertensive_episode_next_day else 0.0
+        # No next-day cuff reading exists for the final day, so its outcome is unlabelled.
+        records[-1].hypertensive_episode_next_day = "unlabelled"
         return records
 
     def _simulate_sleep(

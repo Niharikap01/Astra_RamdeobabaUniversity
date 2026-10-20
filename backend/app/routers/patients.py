@@ -6,7 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from backend.app.auth import get_current_user
+from backend.app.auth import get_current_user, require_role
 from backend.app.database import get_db
 from backend.app.models import ClinicianNote, User
 from backend.app.schemas import (
@@ -145,7 +145,7 @@ def list_patient_notes(
 def add_patient_note(
     patient_id: str,
     payload: ClinicianNoteCreate,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["clinician", "admin"])),
     db: Session = Depends(get_db),
 ):
     """Add a documented clinician note for the patient record."""
@@ -169,7 +169,7 @@ def add_patient_note(
 def request_bp_recheck(
     patient_id: str,
     payload: BPRecheckRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["clinician", "admin"])),
     db: Session = Depends(get_db),
 ):
     """Request an immediate seated home blood pressure cuff re-measurement from patient."""

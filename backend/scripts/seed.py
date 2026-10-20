@@ -50,6 +50,22 @@ def seed_default_users(db) -> None:
         db.commit()
         logger.info("Default admin seeded: admin / nightwatch2026 (role=admin)")
 
+    # Seed demo user "viewer" / nightwatch2026 only when DEMO_MODE=true
+    from backend.app.config import settings
+    is_demo = getattr(settings, "demo_mode", False) or os.getenv("DEMO_MODE", "").strip().lower() in ("true", "1", "yes")
+    if is_demo:
+        viewer = db.query(User).filter(User.username == "viewer").first()
+        if not viewer:
+            viewer = User(
+                username="viewer",
+                hashed_password=hash_password("nightwatch2026"),
+                role="viewer",
+                full_name="Demo Viewer",
+            )
+            db.add(viewer)
+            db.commit()
+            logger.info("Demo viewer seeded: viewer / nightwatch2026 (role=viewer)")
+
 
 def seed_database(num_patients: int = 200, days: int = 120, force: bool = False) -> None:
     """Populate database with synthetic cohort and longitudinal data."""

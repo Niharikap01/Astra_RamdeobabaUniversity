@@ -64,6 +64,8 @@ class DataPreparationPipeline:
                 all_daily_records.append(asdict(r))
 
         records_df = pd.DataFrame(all_daily_records)
+        # Keep the explicit final-day marker Parquet-compatible alongside binary labels.
+        records_df["hypertensive_episode_next_day"] = records_df["hypertensive_episode_next_day"].astype("string")
 
         if save_artifacts:
             patients_df.to_parquet(os.path.join(self.raw_dir, "patients.parquet"), index=False)
@@ -91,7 +93,10 @@ class DataPreparationPipeline:
 
                 # Target: Hypertensive episode on day d_idx + 1 (labeled in current row as next_day)
                 curr_row = group_sorted.iloc[d_idx]
-                feat_dict["target"] = int(curr_row["hypertensive_episode_next_day"])
+                label = curr_row["hypertensive_episode_next_day"]
+                if pd.isna(label) or str(label).lower() == "unlabelled":
+                    continue
+                feat_dict["target"] = int(label)
                 feat_dict["lead_time_hours"] = float(curr_row.get("lead_time_hours", 11.0))
                 feature_rows.append(feat_dict)
         dataset_df = pd.DataFrame(feature_rows)

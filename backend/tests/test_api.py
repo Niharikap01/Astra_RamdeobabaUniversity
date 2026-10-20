@@ -295,17 +295,36 @@ def test_alert_lifecycle_and_notes(test_client, seeded_patient, db_session):
     assert res_recheck.json()["status"] == "ok"
 
 
-def test_simulation_endpoints(test_client):
+def test_simulation_endpoints(test_client, db_session):
     """GET/POST /api/simulation status, start, stop."""
+    from backend.app.auth import get_current_user
+    from backend.app.main import app
+    from backend.app.models import User
+
     # Status
     res_st = test_client.get("/api/simulation/status")
     assert res_st.status_code == 200
     assert "is_running" in res_st.json()
 
-    # Stop (safe to call even if not running)
-    res_stop = test_client.post("/api/simulation/stop")
-    assert res_stop.status_code == 200
-    assert res_stop.json()["status"] == "ok"
+    # Clinician is forbidden from simulator controls
+    res_forbidden = test_client.post("/api/simulation/stop")
+    assert res_forbidden.status_code == 403
+
+    # Admin is permitted
+    admin_user = User(
+        username="admin_sim_test",
+        hashed_password="hash",
+        role="admin",
+        full_name="Admin Sim",
+    )
+    old_override = app.dependency_overrides[get_current_user]
+    try:
+        app.dependency_overrides[get_current_user] = lambda: admin_user
+        res_stop = test_client.post("/api/simulation/stop")
+        assert res_stop.status_code == 200
+        assert res_stop.json()["status"] == "ok"
+    finally:
+        app.dependency_overrides[get_current_user] = old_override
 
 
 def test_websocket_stream(test_client, seeded_patient):

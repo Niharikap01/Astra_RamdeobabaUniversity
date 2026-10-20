@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import { WhatIfResponse } from "../types";
+import { useAuth } from "../context/AuthContext";
 
 interface WhatIfSimulatorCardProps {
   patientId: string;
@@ -48,6 +49,9 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
   currentRiskLevel,
   onSimulatedRiskChange,
 }) => {
+  const { user } = useAuth();
+  const isViewer = user?.role === "viewer";
+
   // Slider states
   const [sleepDelta, setSleepDelta] = useState<number>(0);
   const [medicationTaken, setMedicationTaken] = useState<number>(1);
@@ -78,6 +82,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
       name: "Sleep Extension (+1.5h)",
       icon: Moon,
       apply: () => {
+        if (isViewer) return;
         setSleepDelta(1.5);
         setMedicationTaken(1);
         setStepsDelta(0);
@@ -88,6 +93,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
       name: "Strict Adherence (Dose Taken)",
       icon: Pill,
       apply: () => {
+        if (isViewer) return;
         setSleepDelta(0);
         setMedicationTaken(1);
         setStepsDelta(0);
@@ -98,6 +104,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
       name: "Daily Activity (+4,000 Steps)",
       icon: TrendingUp,
       apply: () => {
+        if (isViewer) return;
         setSleepDelta(0);
         setMedicationTaken(1);
         setStepsDelta(4000);
@@ -108,6 +115,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
       name: "Comprehensive Lifestyle Plan",
       icon: Sparkles,
       apply: () => {
+        if (isViewer) return;
         setSleepDelta(1.5);
         setMedicationTaken(1);
         setStepsDelta(3000);
@@ -118,7 +126,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
 
   // Execute simulation
   const runSimulation = useCallback(async () => {
-    if (!patientId) return;
+    if (!patientId || isViewer) return;
     setIsSimulating(true);
     try {
       const overrides: Record<string, any> = {};
@@ -138,7 +146,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
     } finally {
       setIsSimulating(false);
     }
-  }, [patientId, sleepDelta, medicationTaken, stepsDelta, sbpDelta, onSimulatedRiskChange]);
+  }, [patientId, sleepDelta, medicationTaken, stepsDelta, sbpDelta, onSimulatedRiskChange, isViewer]);
 
   useEffect(() => {
     runSimulation();
@@ -146,6 +154,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
 
   // Reset sliders
   const handleReset = () => {
+    if (isViewer) return;
     setSleepDelta(0);
     setMedicationTaken(1);
     setStepsDelta(0);
@@ -157,7 +166,7 @@ export const WhatIfSimulatorCard: React.FC<WhatIfSimulatorCardProps> = ({
 
   // Save scenario (up to 3)
   const handleSaveScenario = () => {
-    if (!simulationResult || savedScenarios.length >= 3) return;
+    if (isViewer || !simulationResult || savedScenarios.length >= 3) return;
     const simPct = Math.round(simulationResult.new_probability * 100);
     const deltaPct = Math.round(simulationResult.delta * 100);
     const newScenario: SavedScenario = {

@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from backend.app.auth import get_current_user
+from backend.app.auth import get_current_user, require_role
 from backend.app.config import settings
 from backend.app.database import get_db
 from backend.app.models import User
@@ -162,7 +162,7 @@ def get_patient_alerts(
 def acknowledge_alert(
     alert_id: str,
     payload: AlertAcknowledgeRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["clinician", "admin"])),
     db: Session = Depends(get_db),
 ):
     """Acknowledge a high-risk clinical alert with optional note."""
@@ -186,7 +186,7 @@ def acknowledge_alert(
 def snooze_alert(
     alert_id: str,
     payload: AlertSnoozeRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["clinician", "admin"])),
     db: Session = Depends(get_db),
 ):
     """Snooze a clinical alert with duration and documented reason."""
@@ -215,7 +215,7 @@ def snooze_alert(
 def mark_false_positive(
     alert_id: str,
     payload: FalsePositiveRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_role(["clinician", "admin"])),
     db: Session = Depends(get_db),
 ):
     """Mark an alert as false positive for model safety auditing."""
