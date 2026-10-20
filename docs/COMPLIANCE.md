@@ -2,27 +2,40 @@
 
 | Requirement | Evidence (file/command) | Status | Note |
 |---|---|---|---|
-| G1 Static/historical EHR, including genetic markers | backend/app/simulation/; docs/data_dictionary.md | PARTIAL | EHR source paths exist; genetic markers not verified/included in this run. |
-| G2 Dynamic wearable/IoT streams | backend/app/simulation/wearable_simulator.py | PARTIAL | Simulator path exists; live correctness not revalidated here. |
-| G3 Fusion model predicts next-24-hour BP event | ml/; ml/artifacts/metrics.json | PARTIAL | Model/evaluation paths exist; clinical validity is not established. |
-| G4 Doctor-facing conceptual dashboard | dashboard/src/ | PARTIAL | Dashboard source exists; acceptance workflow not revalidated. |
-| G5 Synthetic/open-source data only | README.md; data/ | PARTIAL | README states synthetic data; repository-wide privacy audit not run. |
-| H1 Public repository and required name | git remote -v | MISSING | Public visibility/name not verified. |
-| H2 README with project/team details | README.md | PARTIAL | README exists; team details and requested sections incomplete/unverified. |
-| H3 Architecture diagram PDF | docs/architecture.pdf | MISSING | PDF absent. |
-| H4 Presentation PDF/PPT | docs/NightWatch_presentation.pptx; docs/presentation_outline.md | MISSING | Both absent. |
-| H5 20-25 minute demo video link | docs/demo_script.md | MISSING | Script/link absent. |
-| H6 Open-source license | LICENSE | PARTIAL | License file exists; contents not reviewed. |
-| H7 Synthetic-data statement | README.md | PARTIAL | Statement exists; no full content audit. |
-| H8 Training and evaluation code | ml/; scripts/evaluate.ps1 | PARTIAL | Source paths exist; training/evaluation not rerun. |
-| H9 Live sensor simulator | backend/app/simulation/ | PARTIAL | Source exists; live run not verified. |
-| H10 Auto-updating twin | backend/app/routers/; dashboard/src/ | PARTIAL | Source paths exist; live update not verified. |
-| H11 Risk dashboard, trends, alerts, explanations | dashboard/src/ | PARTIAL | Source exists; UI acceptance not checked. |
-| H12 Working What-If | backend/app/routers/whatif.py; dashboard/src/ | PARTIAL | Source exists; behavior not revalidated. |
-| H13 Sleep Fingerprint | dashboard/src/; backend/app/routers/ | PARTIAL | Source exists; behavior not revalidated. |
-| H14 Clean docker compose up | docker-compose.yml | PARTIAL | Compose file exists; Docker command NOT RUN. |
-| H15 No real data/credentials committed | data/; repository scan | MISSING | Full audit NOT RUN. |
-| H16 CI workflow | .github/workflows/ci.yml | PARTIAL | Workflow exists; CI not run here. |
-| A1 Pytest hang diagnosis | .venv_check/Scripts/python.exe -m pytest -q | PARTIAL | 49 passed in 44.33 s; hang not reproduced and root cause remains unknown. |
-| A3 Sparse-BP statistics | ml/artifacts/metrics.json | PARTIAL | Corrected result fields present; report/model-card regeneration not revalidated. |
-| E1 Clean-clone smoke test | git clone; backend health; dashboard build | MISSING | NOT RUN. |
+| G1 | backend/app/simulation/; docs/data_dictionary.md | PARTIAL | EHR paths present; genetic markers not included in this run. |
+| G2 | backend/app/simulation/wearable_simulator.py | PARTIAL | Simulator source present; live sensor behavior not rechecked. |
+| G3 | ml/; ml/artifacts/metrics.json | PARTIAL | Model/evaluation assets present; only synthetic data evidence. |
+| G4 | dashboard/src/ | PARTIAL | Dashboard source present; UI acceptance not rechecked. |
+| G5 | README.md; data/ | PARTIAL | Synthetic-data disclosure present; repository privacy audit not run. |
+| H1 | git remote -v; public repository | MISSING | Public visibility and required repository name not verified. |
+| H2 | README.md | PARTIAL | README present; requested sections/team details incomplete or unverified. |
+| H3 | docs/architecture.pdf | MISSING | Required PDF absent. |
+| H4 | docs/NightWatch_presentation.pptx; docs/presentation_outline.md | MISSING | Presentation deliverable absent. |
+| H5 | docs/demo_script.md; video link | MISSING | Demo script and video link absent. |
+| H6 | LICENSE | PARTIAL | License file present; contents not reviewed. |
+| H7 | README.md | PARTIAL | Synthetic-data statement present; full audit not run. |
+| H8 | ml/; scripts/evaluate.ps1 | PARTIAL | Code paths present; evaluation not rerun in this pass. |
+| H9 | backend/app/simulation/ | PARTIAL | Simulator source present; live run not verified. |
+| H10 | backend/app/routers/; dashboard/src/ | PARTIAL | Twin-related source paths present; live update not verified. |
+| H11 | dashboard/src/ | PARTIAL | Dashboard source present; feature acceptance not rechecked. |
+| H12 | backend/app/routers/whatif.py; dashboard/src/ | PARTIAL | What-If source paths present; behavior not rechecked. |
+| H13 | dashboard/src/; backend/app/routers/ | PARTIAL | Sleep Fingerprint source paths present; behavior not rechecked. |
+| H14 | docker-compose.yml; Dockerfiles | PARTIAL | Compose file presence only; Docker validation NOT RUN. |
+| H15 | repository credential/privacy audit | MISSING | Repository-wide scan NOT RUN. |
+| H16 | .github/workflows/ci.yml | PARTIAL | Workflow present; CI NOT RUN. |
+| A1 | .venv_check/Scripts/python.exe -m pytest -q | PARTIAL | All 8 test files passed; full suite 49 passed in 44.33 s; prior hang not reproduced. |
+| A2 | auth, API, UI role controls | PARTIAL | Source paths present; role rules not audited in this pass. |
+| A3 | ml/artifacts/metrics.json; docs/evaluation_report.md; docs/model_card.md | PARTIAL | Metrics JSON has corrected sparse fields; report/model-card agreement not checked. |
+| B1 | Risk Horizon API and dashboard | PARTIAL | Presence only; behavior not checked. |
+| B2 | What-If API and docs/whatif_effects.md | PARTIAL | Presence only; behavior not checked. |
+| B3 | backend/app/simulation/ | PARTIAL | Presence only; tick behavior not checked. |
+| B4 | data/README.md; backend/app/routers/ | PARTIAL | Data file list and circular-label note refreshed; WebSocket ticket and final-day label not checked. |
+| C1-C8 | dashboard/src/ | PARTIAL | Dashboard source present; requirements not verified. |
+| D1 | synthetic genetic markers | MISSING | Intentionally skipped by budget gate; genetic markers out of scope. |
+| D2 | README.md CGM statement | MET | README explicitly says CGM not included and explains why. |
+| D3 | README.md; scripts/update_readme_metrics.py | PARTIAL | Metrics block generated; remaining requested sections/generators incomplete. |
+| D4 | docker-compose.yml; Dockerfiles; .github/workflows/ci.yml | PARTIAL | Files present; Docker config and CI NOT RUN. |
+| D5 | docs/data_dictionary.md; clinical_safety; presentation | PARTIAL | Data dictionary exists; safety/demo/presentation deliverables absent or unverified. |
+| E0 | scripts/update_readme_metrics.py; scripts/check_readme_links.py | PARTIAL | README metrics generated; local link check reports 1 link/image and 0 broken; API/env/tree generators absent. |
+| E1 | clean clone, install, health, login, dashboard build | MISSING | NOT RUN. |
+| E2 | docs/COMPLIANCE.md; docs/HANDOFF.md; docs/TODO.md | PARTIAL | Evidence ledger/handoff/TODO present; bounded by this run. |
