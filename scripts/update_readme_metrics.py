@@ -89,7 +89,7 @@ def main():
     )
     text = text.replace(
         "Parts of this project were developed with AI coding assistants; all code was reviewed, tested and is the team's responsibility.",
-        "AI assistants were used for coding; human team members specified, reviewed and validated the project. The verification commands actually run in this pass are recorded in docs/RUN_STATE.md.",
+        "AI assistants were used for coding; human team members specified, reviewed and validated the project.",
     )
     readme_path.write_text(text, encoding="utf-8")
     print("Updated README metrics from ml/artifacts/metrics.json and thresholds.json.")

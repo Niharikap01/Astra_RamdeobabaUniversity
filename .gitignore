@@ -47,6 +47,7 @@ dashboard/.vite/
 *.local
 
 # Data storage (keep committed .gitkeep)
+data/**/*.parquet
 ml/artifacts/*.png
 data/raw/*.parquet
 data/raw/*.csv
