@@ -54,7 +54,7 @@ LightGBM + isotonic calibration, patient-grouped 5-fold CV (200 synthetic patien
 
 Patient-cluster bootstrap 95% CI for the full model: ROC-AUC 0.734-0.816. **Honest reading:** on dense synthetic data the home-BP history carries most of the signal. Wearable value under sparse BP availability is reported by availability setting in `docs/evaluation_report.md` and `ml/artifacts/metrics.json`. Results are on synthetic data and do not imply clinical performance.
 
-Reproduce: `python -m ml.train_lightgbm` then `python -m ml.robustness`.
+Reproduce in Windows PowerShell: `python -m ml.train_lightgbm` then `.\scripts\evaluate.ps1`. The evaluation script runs `.\.venv_check\Scripts\python.exe -m ml.robustness`; the `make evaluate` target calls the same script.
 
 ## Repository layout
 `backend/` FastAPI app, services, simulators, tests | `ml/` training, evaluation, explainability, artifacts | `dashboard/` React 19 + Vite + TypeScript + Tailwind 4 + ECharts | `docs/` model card, data dictionary, design spec, architecture | `scripts/` dev + simulator scripts.

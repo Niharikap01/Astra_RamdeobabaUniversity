@@ -21,7 +21,7 @@ train:
 	python -m ml.train_lightgbm
 
 evaluate:
-	python -m ml.robustness
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/evaluate.ps1
 
 
 test:
